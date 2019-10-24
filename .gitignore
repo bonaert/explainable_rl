@@ -1,4 +1,16 @@
-__init__.py
+test/__init__.py
 *.pyc
 __pycache__/
 .idea/
+.pytest_cache/
+
+.installed.cfg
+bin
+develop-eggs
+dist
+downloads
+eggs
+parts
+*.egg-info
+lib
+lib64

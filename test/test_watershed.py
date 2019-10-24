@@ -1,14 +1,15 @@
-from src.watershed import WatershedEnv
+from gym_watershed import WatershedEnv
+import gym
 
 def test_canCreateEnvironment():
-    watershed = WatershedEnv()
+    env = gym.make('watershed-v0')
 
 def test_canRender():
-    watershed = WatershedEnv()
-    watershed.render()
+    env = gym.make('watershed-v0')
+    env.render()
 
 def test_canRun():
-    watershed = WatershedEnv()
+    env = gym.make('watershed-v0')
     done = False
     while not done:
-        observation, reward, done, info = watershed.step(0)
+        observation, reward, done, info = env.step(0)

@@ -1,8 +1,4 @@
-#import gym
 
-
-# from gym import error, spaces, utils
-# from gym.utils import seeding
 
 #####################
 # Watershed problem #
@@ -90,6 +86,15 @@
 
 
 import os
+import gym
+import numpy as np
+
+from gym import error, spaces, utils
+from gym.utils import seeding
+
+
+
+# Reading the scenarios from the files
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, 'data')
 
@@ -99,15 +104,19 @@ def readFlowsFromFile(filename):
     with open(os.path.join(DATA_DIR, filename)) as f:
         return [int(x.strip()) for x in f.readlines() if x.strip()]
 
-
 allQ1 = readFlowsFromFile("Q1_proportional.txt")
 allQ2 = readFlowsFromFile("Q2_proportional.txt")
 allS = readFlowsFromFile("S_proportional.txt")
 
-class WatershedEnv():
+
+# The environment
+class WatershedEnv(gym.Env):
+    """ Watershed environment that respects the OpenAI gym interface"""
     metadata = {'render.modes': ['human']}
 
     def __init__(self, scenarioNum=0):
+        super(WatershedEnv, self).__init__()
+
         # Internal details
         self.stepNum = 0
         self.TOTAL_NUMBER_OF_EPISODES = 1000
@@ -152,33 +161,35 @@ class WatershedEnv():
         # "S is storage capacity of the dam (in L^3)"
         self.S = allS[scenarioNum]
 
-        # Upper and lower bounds (the first 2 lines are there to remove warnings)
-        self.lowerBounds = [0.0] * 6
-        self.upperBounds = [0.0] * 6
-        self.updateBounds()
-
-
-
-
-
-    def updateBounds(self):
-        # TODO: in his code, he creates boundaries arrays too, but he never seems to use
-        # them except to do fractions <-> liters conversions. This seems strange to me,
-        # since there's no guarantee that the values of x will be in the range. This may
-        # be a bug in his code, or maybe these constraints are always true for a reason
-        # I don't understand yet.
-
-        # We don't have explicit constrains for x[2] and x[4] so we set NaN
-        nan = float('NaN')
-        self.lowerBounds = [self.alpha[0], 0, nan, self.alpha[2], nan, self.alpha[4]]
-        self.upperBounds = [
-            self.Q1 - self.alpha[1],
-            self.S + self.Q1 - self.alpha[0],
-            nan,
-            self.Q2 - self.alpha[3],
-            nan,
-            self.S + self.Q1 + self.Q2 - self.alpha[0] - self.alpha[2] - self.alpha[5]
+        # Lower and upper bounds for each variable that is directly
+        # controllable by the user
+        self.lowerBounds = [
+            self.alpha[0], # x1
+            0,             # x2
+            self.alpha[2], # x4
+            self.alpha[4]  # x6
         ]
+        self.upperBounds = [
+            self.Q1 - self.alpha[1],  # x1
+            self.S + self.Q1 - self.alpha[0], # x2
+            self.Q2 - self.alpha[3], # x4
+            self.S + self.Q1 + self.Q2 - self.alpha[0] - self.alpha[2] - self.alpha[5] # x6
+        ]
+
+        # Define action and observation space
+        # They must be gym.spaces objects
+        # Example when using discrete actions:
+        self.observation_space = spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(6, 1)
+        )
+        # Example for using image as input:
+        self.action_space = spaces.Box(
+            low=np.array(self.lowerBounds),
+            high=np.array(self.upperBounds))
+
+
 
     def updateViolations(self):
         self.constraintValues[0] = self.alpha[0] - self.x[0]
