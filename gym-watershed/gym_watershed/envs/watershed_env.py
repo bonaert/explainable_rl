@@ -15,7 +15,7 @@
 #                                 /                                           x5
 #                                /                   x2                ----------------> Farms
 #  Upper river   Q1 = 92 --------------> Dam ----------------         /
-#                                                            |       /
+#                                         S                  |       /
 #                                                            |-------------------------> Downstream
 #                                                            |                x6
 #  Lower river   Q2 = 39 ------------------------------------
@@ -51,7 +51,21 @@
 
 # Actions
 # -------
-# TODO!
+# The action is a continuous action space of dimension 4.
+# The values of x1, x2, x4 and x6 have lower and upper bounds given by the equations:
+#
+# Note: we use the mathematical notation below
+#
+#     alpha1  <=  x1  <= Q1 - alpha2
+#     0       <=  x2  <= S + Q1 - alpha1
+#     alpha3  <=  x4  <= Q2 - alpha4
+#     alpha5  <=  x6  <= S + Q1 + Q2 - alpha1 - alpha3 - alpha6
+#
+# Thus, for each variable x, we may increase it at most by MAX - MIN or
+# decrease it at most by MAX - MIN. Thus, the action range for each
+# variable x is [-(MAX - MIN), (MAX - MIN)]
+# When applying an action, we ensure that the resulting state is still within
+# bounds, clipping it inside the bounds if necessary.
 
 
 # Reward
@@ -121,9 +135,6 @@ class WatershedEnv(gym.Env):
         self.stepNum = 0
         self.TOTAL_NUMBER_OF_EPISODES = 1000
 
-        # Variables to be optimized
-        self.x = [0.0] * 6
-
         # Fitness
         self.fitness = 0
 
@@ -148,11 +159,6 @@ class WatershedEnv(gym.Env):
         # Used in verifying boundaries and computing constraints
         self.alpha = [12.0, 10.0, 8.0, 6.0, 15.0, 10.0]
 
-        # TODO: implement reading these values from the files
-        # "The Watershed problem evaluated in this paper will consist of a total of 150 flow
-        # states for the river. This is divided up into training data (100 states) and
-        # testing data (50 states)."
-
         # "Q1 and Q2 represent the monthly inflows of water into respectively
         # the mainstream and tributary (in L^3)"
         self.Q1 = allQ1[scenarioNum]
@@ -163,18 +169,21 @@ class WatershedEnv(gym.Env):
 
         # Lower and upper bounds for each variable that is directly
         # controllable by the user
-        self.lowerBounds = [
+        self.lowerBounds = np.array([
             self.alpha[0], # x1
             0,             # x2
             self.alpha[2], # x4
             self.alpha[4]  # x6
-        ]
-        self.upperBounds = [
+        ])
+        self.upperBounds = np.array([
             self.Q1 - self.alpha[1],  # x1
             self.S + self.Q1 - self.alpha[0], # x2
             self.Q2 - self.alpha[3], # x4
             self.S + self.Q1 + self.Q2 - self.alpha[0] - self.alpha[2] - self.alpha[5] # x6
-        ]
+        ])
+
+        maxIncrease = self.upperBounds - self.lowerBounds
+        maxDecrease = -maxIncrease
 
         # Define action and observation space
         # They must be gym.spaces objects
@@ -186,8 +195,17 @@ class WatershedEnv(gym.Env):
         )
         # Example for using image as input:
         self.action_space = spaces.Box(
-            low=np.array(self.lowerBounds),
-            high=np.array(self.upperBounds))
+            low=maxDecrease,
+            high=maxIncrease
+        )
+
+        # Variables to be optimized
+        self.x = np.zeros(6) # To make pylint happy and get better auto-completion
+        self.initializeState()
+
+    def initializeState(self):
+        initialRandomValues = np.random.uniform(low=self.lowerBounds, high=self.upperBounds)
+        self.updateAllFlows(initialRandomValues)
 
 
 
@@ -244,8 +262,16 @@ class WatershedEnv(gym.Env):
             - done (boolean)
             - info (dict): diagnostic information useful for debugging
         """
-        # TODO: replace this by a real update (which depends on the action)
-        flowsControllableByAgent = [10, 20, 30, 40]
+        if not type(action) is np.ndarray:
+            raise Exception("The action must be a Numpy array but is of type %s (value = %s)" % (type(action), action))
+
+        if not self.action_space.contains(action):
+            raise Exception("The action %s is invalid and must be in the action space %s" % (action, self.action_space))
+
+
+        currentValues = self.x[np.array([0, 1, 3, 5])]
+        flowsControllableByAgent = currentValues + action
+        flowsControllableByAgent = np.clip(flowsControllableByAgent, self.lowerBounds, self.upperBounds)
         self.updateAllFlows(flowsControllableByAgent)
 
         self.updateViolations()
@@ -262,8 +288,8 @@ class WatershedEnv(gym.Env):
 
     def reset(self):
         """ Reset the environment to its initial values """
-        # Variables to be optimized
-        self.x = [0.0] * 6
+        # Reset state to random values
+        self.initializeState()
 
         # Fitness
         self.fitness = 0
@@ -292,19 +318,20 @@ class WatershedEnv(gym.Env):
                        /                                            x5 = {x5}
                       /                 x2 = {x2}              ----------------> Farms
         Q1 = {Q1} --------------> Dam ----------------         /
-                                                    |       /
+                              S = {S}                |       /
                                                     |-------------------------> Lower triburary
                                                     |             x6 = {x6}
         Q2 = {Q2} ------------------------------------
                       \\                 x3 = {x3}
                        \\
                         -------------> Farms
-                         x4 = {x2}
+                         x4 = {x4}
         """
         print(
             content.format(
                 Q1=self.Q1,
                 Q2=self.Q2,
+                S=self.S,
                 x1=self.x[0],
                 x2=self.x[1],
                 x3=self.x[2],
