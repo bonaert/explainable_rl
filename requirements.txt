@@ -2,4 +2,3 @@ torch
 gym
 pytest
 numpy
-gym_watershed
