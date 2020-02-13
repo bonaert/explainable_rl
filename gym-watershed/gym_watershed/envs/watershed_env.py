@@ -186,21 +186,20 @@ class WatershedEnv(gym.Env):
         maxDecrease = -maxIncrease
 
         # Define action and observation space
-        # They must be gym.spaces objects
-        # Example when using discrete actions:
+        # Observation space = 6-dimensional real values (values for x1, x2, x3, x4, x5, x6)
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
             shape=(6, 1)
         )
-        # Example for using image as input:
+        # Action space = 4-dimensional real values (maximum allowed changes in x1, x2, x4, x6)
         self.action_space = spaces.Box(
             low=maxDecrease,
             high=maxIncrease
         )
 
         # Variables to be optimized
-        self.x = np.zeros(6) # To make pylint happy and get better auto-completion
+        self.x = np.zeros(6)  # To make pylint happy and get better auto-completion
         self.initializeState()
 
     def initializeState(self):
@@ -280,7 +279,7 @@ class WatershedEnv(gym.Env):
 
         self.stepNum += 1
 
-        observation = self.x[:] # Make a copy of the state
+        observation = self.x[:]  # Make a copy of the state
         reward = self.fitness
         done = (self.stepNum == self.TOTAL_NUMBER_OF_EPISODES)
         info = None
@@ -306,6 +305,8 @@ class WatershedEnv(gym.Env):
         self.violationsMultiplier = 100
 
         self.totalViolationsSum = 0
+
+        return self.x[:]
 
     def render(self, mode='human'):
         """ Renders the environment and the state of the flows """
