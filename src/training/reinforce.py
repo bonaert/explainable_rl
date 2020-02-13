@@ -1,33 +1,45 @@
 import itertools
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Union
 
 import gym
+import numpy as np
+import sklearn.preprocessing
 import torch
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
 
-from src.policy.linear import SimplePolicy
+from src.policy.linear import SimplePolicyDiscrete, SimplePolicyContinuous
 from torch.optim.optimizer import Optimizer
 
-SHOULD_RENDER = False
+RENDER_FREQUENCY = 100  # Interval between renders (in number of episodes)
 LOGGING_FREQUENCY = 1  # Interval between logs (in number of episodes)
 GAMMA = 0.99  # Discount factor
+BATCH_SIZE = 24
 
 
 @dataclass
 class TrainingInfo:
     """ Stores the rewards and log probabilities during an episode """
     log_probs: List[float] = field(default_factory=list)
-    rewards: List[float] = field(default_factory=list)
+    states: List[float] = field(default_factory=list)
+    actions: List[float] = field(default_factory=list)
+    rewards: Union[List[float], torch.Tensor] = field(default_factory=list)
+    discounted_rewards: Union[List[float], torch.Tensor] = field(default_factory=list)
+    all_discounted_rewards: torch.Tensor = field(default_factory=lambda: torch.tensor([]))
     running_reward: float = None
     episode_reward: float = 0
 
     def reset(self):
-        self.log_probs.clear()
+        self.states.clear()
+        self.actions.clear()
         self.rewards.clear()
+        self.discounted_rewards = []
+        self.log_probs.clear()
         self.episode_reward = 0
 
-    def add_reward(self, reward: float):
+    def record_step(self, state, action, reward: float):
+        self.states.append(state)
+        self.actions.append(action)
         self.rewards.append(reward)
         self.episode_reward += reward
 
@@ -37,8 +49,31 @@ class TrainingInfo:
         else:
             self.running_reward = 0.05 * self.episode_reward + 0.95 * self.running_reward
 
+    def compute_discounted_rewards(self):
+        # Compute discounted rewards at each step
+        self.discounted_rewards = []
+        discounted_reward = 0
+        for reward in self.rewards[::-1]:
+            discounted_reward = reward + GAMMA * discounted_reward
+            self.discounted_rewards.insert(0, discounted_reward)
 
-def select_action(state, policy: SimplePolicy, training_info: TrainingInfo):
+        # Normalize the discounted rewards
+        self.discounted_rewards = torch.tensor(self.discounted_rewards)
+        self.all_discounted_rewards = torch.cat([self.all_discounted_rewards, self.discounted_rewards])
+        self.discounted_rewards = (self.discounted_rewards - self.all_discounted_rewards.mean()) / \
+                                  (self.all_discounted_rewards.std() + 1e-9)
+
+    def get_batches(self, batch_size: int):
+        permutation = torch.randperm(self.discounted_rewards.shape[0])
+        for i in range(0, self.discounted_rewards.shape[0], batch_size):
+            indices = permutation[i: i + batch_size]
+            states = torch.tensor(self.states)[indices]
+            actions = torch.tensor(self.actions)[indices]
+            discounted_rewards = self.discounted_rewards[indices]
+            yield states, actions, discounted_rewards
+
+
+def select_action_discrete(state, policy: SimplePolicyDiscrete, training_info: TrainingInfo):
     # Get distribution
     state = torch.from_numpy(state).float().unsqueeze(0)
     probs = policy.forward(state)
@@ -46,26 +81,35 @@ def select_action(state, policy: SimplePolicy, training_info: TrainingInfo):
     # Sample action and remember its log probability
     m = Categorical(probs)
     action = m.sample()
-    training_info.log_probs.append(m.log_prob(action))
+    training_info.log_probs.append(
+        m.log_prob(action)
+    )
 
     return action.item()
 
 
-def train_policy(optimizer: Optimizer, training_info: TrainingInfo):
-    # Compute discounted rewards at each step
-    discounted_rewards = []
-    discounted_reward = 0
-    for reward in training_info.rewards[::-1]:
-        discounted_reward = reward + GAMMA * discounted_reward
-        discounted_rewards.insert(0, discounted_reward)
+def select_action_continuous(state, policy: SimplePolicyContinuous, training_info: TrainingInfo, env: gym.Env):
+    # Get distribution
+    state = torch.from_numpy(state).float().unsqueeze(0)
+    mu, sigma = policy.forward(state)
 
-    # Normalize the discounted rewards
-    discounted_rewards = torch.tensor(discounted_rewards)
-    discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-9)
+    # Sample action and remember its log probability
+    n = Normal(mu, sigma)
+    action = n.sample()
+    action = action.clamp(env.action_space.low[0], env.action_space.high[0])
+    training_info.log_probs.append(
+        n.log_prob(action) + n.entropy()  # Add entropy to encourage exploration
+    )
+
+    return action
+
+
+def train_policy(optimizer: Optimizer, training_info: TrainingInfo):
+    training_info.compute_discounted_rewards()
 
     # Compute the loss of the policy at each time step
     policy_losses = []
-    for log_prob, discounted_reward in zip(training_info.log_probs, discounted_rewards):
+    for log_prob, discounted_reward in zip(training_info.log_probs, training_info.discounted_rewards):
         policy_losses.append(-log_prob * discounted_reward)
 
     # Optimize the policy
@@ -77,35 +121,71 @@ def train_policy(optimizer: Optimizer, training_info: TrainingInfo):
     # Reset the state of the episode
     training_info.reset()
 
-    pass
+
+def train_policy_batches(policy: SimplePolicyContinuous, optimizer: Optimizer, training_info: TrainingInfo,
+                         episode_number: int):
+    training_info.compute_discounted_rewards()
+
+    for (states, actions, discounted_rewards) in training_info.get_batches(BATCH_SIZE):
+        train_batch(policy, states, actions, discounted_rewards, optimizer, episode_number)
+
+    training_info.reset()
 
 
-def reinforceTraining(policy: SimplePolicy, env: gym.Env, optimizer: Optimizer):
+def train_batch(policy: SimplePolicyContinuous, states, actions, discounted_rewards, optimizer, episode_number):
+    optimizer.zero_grad()
+
+    policy_losses = []
+    for (state, action, discounted_reward) in zip(states, actions, discounted_rewards):
+        state = state.float().unsqueeze(0)
+        mu, sigma = policy.forward(state)
+        n = Normal(mu, sigma)
+        policy_losses.append(-(n.log_prob(action) + 0.99 ** episode_number * n.entropy()) * discounted_reward)
+
+    total_policy_loss = torch.cat(policy_losses).sum()
+    total_policy_loss.backward()
+    optimizer.step()
+
+
+def reinforceTraining(
+        policy: SimplePolicyDiscrete,
+        env: gym.Env,
+        optimizer: Optimizer,
+        continuous_actions: bool):
     training_info = TrainingInfo()
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 
-    for episode_number in itertools.count(1):  # itertools.count(1) is basically range(infinity)
+    observation_examples = np.array([env.observation_space.sample() for _ in range(10000)])
+    scaler = sklearn.preprocessing.StandardScaler()
+    scaler.fit(observation_examples)
+
+    for episode_number in itertools.count(1):  # itertools.count(1) is basically range(1, infinity)
         state = env.reset()
 
         # Do a whole episode (upto 10000 steps, don't want infinite steps)
         for t in range(1, 10000):
-            action = select_action(state, policy, training_info)
-            state, reward, done, _ = env.step(action)
+            if continuous_actions:
+                state = scaler.transform(state.reshape(1, -1))
+                action = select_action_continuous(state, policy, training_info, env)
+            else:
+                action = select_action_discrete(state, policy, training_info)
 
-            if SHOULD_RENDER:
+            new_state, reward, done, _ = env.step(action)
+
+            if RENDER_FREQUENCY > 0 and episode_number % RENDER_FREQUENCY == 0:
                 env.render()
 
-            training_info.add_reward(reward)  # Store reward and updates the running reward
-
+            training_info.record_step(state, action, reward)  # Store reward and updates the running reward
+            state = new_state
             if done:
                 break
 
         training_info.update_running_reward()
-        train_policy(optimizer, training_info)
 
         # Add some logging
         if episode_number % LOGGING_FREQUENCY == 0:
             print(f"Episode {episode_number}\t"
+                  f"Reached top: {t < 995}\t"
                   f"Last reward: {training_info.episode_reward:.2f}\t"
                   f"Average Reward: {training_info.running_reward:.2f}\t"
                   f"Number of steps during episode: {t}")
@@ -116,12 +196,7 @@ def reinforceTraining(policy: SimplePolicy, env: gym.Env, optimizer: Optimizer):
                   f"{env.spec.reward_threshold}. The last episode ran for {t} steps.")
             break
 
-
-if __name__ == "__main__":
-    env = gym.make('CartPole-v1')
-    env.seed(50)
-    torch.manual_seed(50)
-    simple_policy = SimplePolicy(input_size=4, output_size=2)
-    optimizer = torch.optim.Adam(params=simple_policy.parameters(), lr=1e-2)
-
-    reinforceTraining(simple_policy, env, optimizer)
+        if continuous_actions:
+            train_policy_batches(policy, optimizer, training_info, episode_number)
+        else:
+            train_policy(optimizer, training_info)
