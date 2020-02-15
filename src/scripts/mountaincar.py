@@ -12,6 +12,6 @@ if __name__ == "__main__":
                                            output_size=env.action_space.shape[0])
     optimizer = torch.optim.Adam(params=simple_policy.parameters(), lr=5e-5)
 
-    reinforceTraining(simple_policy, env, optimizer, continuous_actions=True)
+    reinforceTraining(simple_policy, env, optimizer, continuous_actions=True, scale_state=True, train_with_batches=True)
 
     env.close()  # To avoid benign but annoying errors when the gym render window closes

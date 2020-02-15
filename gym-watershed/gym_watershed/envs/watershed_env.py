@@ -1,5 +1,3 @@
-
-
 #####################
 # Watershed problem #
 #####################
@@ -100,23 +98,26 @@
 
 
 import os
+from typing import Union, List
+
 import gym
 import numpy as np
+import torch
 
 from gym import error, spaces, utils
 from gym.utils import seeding
-
-
 
 # Reading the scenarios from the files
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, 'data')
 
-def readFlowsFromFile(filename):
+
+def readFlowsFromFile(filename: str):
     """ Read values in the file specified by the path.
     There is one number per line. The files end with a new line"""
     with open(os.path.join(DATA_DIR, filename)) as f:
         return [int(x.strip()) for x in f.readlines() if x.strip()]
+
 
 allQ1 = readFlowsFromFile("Q1_proportional.txt")
 allQ2 = readFlowsFromFile("Q2_proportional.txt")
@@ -128,7 +129,7 @@ class WatershedEnv(gym.Env):
     """ Watershed environment that respects the OpenAI gym interface"""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, scenarioNum=0):
+    def __init__(self, scenarioNum: int = 0):
         super(WatershedEnv, self).__init__()
 
         # Internal details
@@ -168,22 +169,22 @@ class WatershedEnv(gym.Env):
         self.S = allS[scenarioNum]
 
         # Lower and upper bounds for each variable that is directly
-        # controllable by the user
+        # controllable by the ser.
         self.lowerBounds = np.array([
-            self.alpha[0], # x1
-            0,             # x2
-            self.alpha[2], # x4
+            self.alpha[0],  # x1
+            0,  # x2
+            self.alpha[2],  # x4
             self.alpha[4]  # x6
         ])
         self.upperBounds = np.array([
             self.Q1 - self.alpha[1],  # x1
-            self.S + self.Q1 - self.alpha[0], # x2
-            self.Q2 - self.alpha[3], # x4
-            self.S + self.Q1 + self.Q2 - self.alpha[0] - self.alpha[2] - self.alpha[5] # x6
+            self.S + self.Q1 - self.alpha[0],  # x2
+            self.Q2 - self.alpha[3],  # x4
+            self.S + self.Q1 + self.Q2 - self.alpha[0] - self.alpha[2] - self.alpha[5]  # x6
         ])
 
-        maxIncrease = self.upperBounds - self.lowerBounds
-        maxDecrease = -maxIncrease
+        maxIncrease = np.ones(4)  #self.upperBounds - self.lowerBounds
+        maxDecrease = -np.ones(4)  #-maxIncrease
 
         # Define action and observation space
         # Observation space = 6-dimensional real values (values for x1, x2, x3, x4, x5, x6)
@@ -205,8 +206,6 @@ class WatershedEnv(gym.Env):
     def initializeState(self):
         initialRandomValues = np.random.uniform(low=self.lowerBounds, high=self.upperBounds)
         self.updateAllFlows(initialRandomValues)
-
-
 
     def updateViolations(self):
         self.constraintValues[0] = self.alpha[0] - self.x[0]
@@ -238,7 +237,7 @@ class WatershedEnv(gym.Env):
     def updateFitness(self):
         self.fitness = self.totalObjectiveScore - self.violationPenalty
 
-    def updateAllFlows(self, flowsControllableByAgent):
+    def updateAllFlows(self, flowsControllableByAgent: Union[List[float], np.ndarray]):
         # flowsControllableByAgent =
         #    Programming notation: [x[0], x[1], x[3], x[5]]
         #    Math notation:        [x1,   x2,   x4,   x6  ]
@@ -250,10 +249,10 @@ class WatershedEnv(gym.Env):
         self.x[5] = flowsControllableByAgent[3]
 
         # Then deduce the indirect variables
-        self.x[2] = self.Q2 - self.x[3]                # x3 = Q2 - x4
+        self.x[2] = self.Q2 - self.x[3]  # x3 = Q2 - x4
         self.x[4] = self.x[1] + self.x[2] - self.x[5]  # x5 = x2 + x3 - x6
 
-    def step(self, action):
+    def step(self, action: Union[np.ndarray, torch.Tensor]):
         """
         Returns observation, reward, done, info = env.step(action)
             - observation (object)
@@ -261,17 +260,24 @@ class WatershedEnv(gym.Env):
             - done (boolean)
             - info (dict): diagnostic information useful for debugging
         """
+        if type(action) == torch.Tensor:
+            action = action.squeeze().numpy()
+
         if not type(action) is np.ndarray:
             raise Exception("The action must be a Numpy array but is of type %s (value = %s)" % (type(action), action))
 
         if not self.action_space.contains(action):
-            raise Exception("The action %s is invalid and must be in the action space %s" % (action, self.action_space))
-
+            action = action.clip(self.action_space.low, self.action_space.high)
 
         currentValues = self.x[np.array([0, 1, 3, 5])]
         flowsControllableByAgent = currentValues + action
         flowsControllableByAgent = np.clip(flowsControllableByAgent, self.lowerBounds, self.upperBounds)
         self.updateAllFlows(flowsControllableByAgent)
+
+        if any([x < 0 for x in self.x]):
+            pass
+            # TODO: should I clip the actions to ensure the flows are always positive?
+            #raise Exception(f"Negative flows! x = {[round(x, 4) for x in self.x]}")
 
         self.updateViolations()
         self.updateObjective()
@@ -282,11 +288,13 @@ class WatershedEnv(gym.Env):
         observation = self.x[:]  # Make a copy of the state
         reward = self.fitness
         done = (self.stepNum == self.TOTAL_NUMBER_OF_EPISODES)
-        info = None
+        info = {}
         return observation, reward, done, info
 
     def reset(self):
         """ Reset the environment to its initial values """
+        self.stepNum = 0
+
         # Reset state to random values
         self.initializeState()
 
@@ -308,25 +316,25 @@ class WatershedEnv(gym.Env):
 
         return self.x[:]
 
-    def render(self, mode='human'):
+    def render(self, mode: str = 'human'):
         """ Renders the environment and the state of the flows """
         # Note, this may seem badly aligned but it is correct!
         # It becomes aligned after substituing the variables by
         # their real value
         content = """
-                          x1 = {x1}
+                          x1 = {x1:.2f}
                         ------------> City
-                       /                                            x5 = {x5}
-                      /                 x2 = {x2}              ----------------> Farms
+                       /                                            x5 = {x5:.2f}
+                      /                 x2 = {x2:.2f}              ----------------> Farms
         Q1 = {Q1} --------------> Dam ----------------         /
                               S = {S}                |       /
                                                     |-------------------------> Lower triburary
-                                                    |             x6 = {x6}
+                                                    |             x6 = {x6:.2f}
         Q2 = {Q2} ------------------------------------
-                      \\                 x3 = {x3}
+                      \\                 x3 = {x3:.2f}
                        \\
                         -------------> Farms
-                         x4 = {x4}
+                         x4 = {x4:.2f}
         """
         print(
             content.format(
