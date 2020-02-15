@@ -12,3 +12,5 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(params=simple_policy.parameters(), lr=1e-2)
 
     reinforceTraining(simple_policy, env, optimizer, continuous_actions=False)
+
+    env.close()  # To avoid benign but annoying errors when the gym render window closes

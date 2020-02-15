@@ -140,7 +140,7 @@ def train_batch(policy: SimplePolicyContinuous, states, actions, discounted_rewa
         state = state.float().unsqueeze(0)
         mu, sigma = policy.forward(state)
         n = Normal(mu, sigma)
-        policy_losses.append(-(n.log_prob(action) + 0.99 ** episode_number * n.entropy()) * discounted_reward)
+        policy_losses.append(-n.log_prob(action) * discounted_reward - 2.5e-4 * n.entropy())
 
     total_policy_loss = torch.cat(policy_losses).sum()
     total_policy_loss.backward()

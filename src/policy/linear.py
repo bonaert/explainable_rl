@@ -46,7 +46,7 @@ class SimplePolicyContinuous(nn.Module):
         # then it won't be part of the parameters given to the optimizer, meaning
         # it will never change. This will mean sigma will never improve and so
         # the results will stay very bad.
-        self.hiddenSigma = Parameter(torch.zeros(32))
+        self.hiddenSigma = Parameter(torch.zeros(32), requires_grad=True)
 
     def forward(self, x) -> Tuple[torch.Tensor, torch.Tensor]:
         mu = self.affine1Mu(x)
