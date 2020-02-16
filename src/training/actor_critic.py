@@ -73,13 +73,15 @@ def actor_critic_train_per_episode(
         critic: SimpleCriticContinuous,
         env: gym.Env,
         optimizer: Optimizer,
-        continuous_actions: bool):
+        continuous_actions: bool,
+        scheduler: torch.optim.lr_scheduler._LRScheduler = None):
     """
     :param policy: the policy that picks the action and improves over time
     :param critic: the critic that is used to evaluate each state
     :param env: the OpenAI gym environment
     :param optimizer: optimizer that improves the policy
     :param continuous_actions: is the action space continuous
+    :param scheduler:
     """
     training_info = TrainingInfo(GAMMA=GAMMA)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
@@ -130,19 +132,24 @@ def actor_critic_train_per_episode(
 
         train_policy_on_episode(optimizer, training_info, episode_number)
 
+        if scheduler:
+            scheduler.step(episode_number)
+
 
 def actor_critic_train_per_step(
         policy: SimplePolicyContinuous,
         critic: SimpleCriticContinuous,
         env: gym.Env,
         optimizer: Optimizer,
-        continuous_actions: bool):
+        continuous_actions: bool,
+        scheduler: torch.optim.lr_scheduler._LRScheduler = None):
     """
     :param policy: the policy that picks the action and improves over time
     :param critic: the critic that is used to evaluate each state
     :param env: the OpenAI gym environment
     :param optimizer: optimizer that improves the policy
     :param continuous_actions: is the action space continuous
+    :param scheduler:
 
 
     https://medium.com/@asteinbach/actor-critic-using-deep-rl-continuous-mountain-car-in-tensorflow-4c1fb2110f7c
@@ -198,3 +205,6 @@ def actor_critic_train_per_step(
             break
 
         training_info.reset()
+
+        if scheduler:
+            scheduler.step(episode_number)

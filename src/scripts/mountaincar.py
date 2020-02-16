@@ -1,5 +1,6 @@
 import gym
 import torch
+from torch.optim.lr_scheduler import StepLR
 
 from src.networks.simple import SimplePolicyContinuous, SimpleCriticContinuous, SimplePolicyContinuous2, \
     SimpleCriticContinuous2
@@ -25,8 +26,11 @@ if __name__ == "__main__":
             {'params': simple_policy.parameters(), 'lr': 0.00001}],
             lr=0.00001)
 
+        lr_scheduler = StepLR(optimizer, step_size=1, gamma=0.99)
+
         # actor_critic_train_per_episode(simple_policy, simple_critic, env, optimizer, continuous_actions=True)
-        actor_critic_train_per_step(simple_policy, simple_critic, env, optimizer, continuous_actions=True)
+        actor_critic_train_per_step(simple_policy, simple_critic, env, optimizer,
+                                    continuous_actions=True, scheduler=lr_scheduler)
 
         save_model(simple_policy, "simple_policy.data")
         save_model(simple_critic, "simple_critic.data")
