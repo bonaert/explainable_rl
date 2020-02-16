@@ -8,7 +8,8 @@ from src.networks.simple import SimplePolicyContinuous, SimpleCritic
 from torch.optim.optimizer import Optimizer
 
 from src.training.common import select_action_discrete, select_action_continuous, TrainingInfo, get_state_value, \
-    prepare_state, setup_scaler, scale_state, RunParams
+    prepare_state, setup_scaler, scale_state, RunParams, close_tensorboard
+from training.common import log_on_tensorboard, log_on_console
 
 
 def train_policy_on_episode(optimizer: Optimizer, training_info: TrainingInfo, episode_number: int):
@@ -87,6 +88,8 @@ def actor_critic_train_per_episode(
     if run_params.should_scale_states:
         scaler = setup_scaler(env)
 
+    writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
+
     for episode_number in itertools.count():  # itertools.count() is basically range(+infinity)
         state = env.reset()
 
@@ -115,14 +118,8 @@ def actor_critic_train_per_episode(
         training_info.update_running_reward()
 
         # Add some logging
-        if run_params.should_log(episode_number):
-            print(f"Episode {episode_number}\t"
-                  f"Solved: {t < env.spec.max_episode_steps - 1}\t"
-                  f"Avg. reward: {float(training_info.episode_reward) / t:.2f}\t"
-                  f"Episode reward: {float(training_info.episode_reward):.2f}\t"
-                  f"Running Reward: {float(training_info.running_reward):.2f}\t"
-                  f"Last Reward: {float(reward):.2f}\t"
-                  f"# Steps in episode: {t}")
+        log_on_console(env, episode_number, reward, run_params, t, training_info)
+        log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer)
 
         # Check if we have solved the environment reliably
         if env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:
@@ -134,6 +131,9 @@ def actor_critic_train_per_episode(
 
         if lr_scheduler:
             lr_scheduler.step(episode_number)
+
+    close_tensorboard(run_params, writer)
+
 
 
 def actor_critic_train_per_step(
@@ -158,7 +158,10 @@ def actor_critic_train_per_step(
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 
-    scaler = setup_scaler(env)
+    if run_params.should_scale_states:
+        scaler = setup_scaler(env)
+
+    writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
     for episode_number in itertools.count(1):  # itertools.count() is basically range(+infinity)
         state = env.reset()
@@ -189,14 +192,8 @@ def actor_critic_train_per_step(
         training_info.update_running_reward()
 
         # Add some logging
-        if run_params.should_log(episode_number):
-            print(f"Episode {episode_number}\t"
-                  f"Solved: {t < env.spec.max_episode_steps - 1}\t"
-                  f"Avg. reward: {float(training_info.episode_reward) / t:.2f}\t"
-                  f"Episode reward: {float(training_info.episode_reward):.2f}\t"
-                  f"Running Reward: {float(training_info.running_reward):.2f}\t"
-                  f"Last Reward: {float(reward):.2f}\t"
-                  f"# Steps in episode: {t}")
+        log_on_console(env, episode_number, reward, run_params, t, training_info)
+        log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer)
 
         # Check if we have solved the environment reliably
         if env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:
@@ -208,3 +205,8 @@ def actor_critic_train_per_step(
 
         if lr_scheduler:
             lr_scheduler.step(episode_number)
+
+    close_tensorboard(run_params, writer)
+
+
+

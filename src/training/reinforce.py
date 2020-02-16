@@ -1,15 +1,13 @@
 import itertools
 
 import gym
-import numpy as np
-import sklearn.preprocessing
 import torch
 from torch.distributions import Normal, Categorical
 from torch.optim.optimizer import Optimizer
 
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous
 from src.training.common import select_action_continuous, select_action_discrete, TrainingInfo, setup_scaler, \
-    scale_state, RunParams
+    scale_state, RunParams, log_on_console, log_on_tensorboard, close_tensorboard
 
 
 def train_policy(optimizer: Optimizer, training_info: TrainingInfo, run_params: RunParams):
@@ -80,6 +78,8 @@ def reinforceTraining(
     if run_params.should_scale_states:
         scaler = setup_scaler(env)
 
+    writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
+
     for episode_number in itertools.count():  # itertools.count() is basically range(+infinity)
         state = env.reset()
 
@@ -106,14 +106,8 @@ def reinforceTraining(
         training_info.update_running_reward()
 
         # Add some logging
-        if run_params.should_log(episode_number):
-            print(f"Episode {episode_number}\t"
-                  f"Solved: {t < env.spec.max_episode_steps - 1}\t"
-                  f"Avg. reward: {float(training_info.episode_reward) / t:.2f}\t"
-                  f"Episode reward: {float(training_info.episode_reward):.2f}\t"
-                  f"Running Reward: {float(training_info.running_reward):.2f}\t"
-                  f"Last Reward: {float(reward):.2f}\t"
-                  f"# Steps in episode: {t}")
+        log_on_console(env, episode_number, reward, run_params, t, training_info)
+        log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer)
 
         # Check if we have solved the environment reliably
         if env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:
@@ -125,3 +119,7 @@ def reinforceTraining(
             train_policy_batches(policy, optimizer, training_info, run_params)
         else:
             train_policy(optimizer, training_info, run_params)
+
+    close_tensorboard(run_params, writer)
+
+

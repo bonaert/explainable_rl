@@ -37,7 +37,8 @@ if __name__ == "__main__":
                                train_with_batches=False,
                                render_frequency=0,
                                entropy_coeff=0.1,
-                               entropy_decay=0.985)
+                               entropy_decay=0.985,
+                               use_tensorboard=True)
 
         # actor_critic_train_per_episode(simple_policy, simple_critic, env, optimizer, run_params, lr_scheduler)
         actor_critic_train_per_step(simple_policy, simple_critic, env, optimizer, run_params, lr_scheduler)

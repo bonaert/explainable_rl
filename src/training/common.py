@@ -8,6 +8,9 @@ import numpy as np
 import torch
 import sklearn.preprocessing
 from torch.distributions import Categorical, Normal
+from torch.utils.tensorboard import SummaryWriter
+
+from datetime import datetime
 
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, SimpleCritic
 
@@ -16,19 +19,34 @@ from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, Si
 class RunParams:
     render_frequency: int = 1  # Interval between renders (in number of episodes)
     logging_frequency: int = 1  # Interval between logs (in number of episodes)
+
     gamma: float = 0.99  # Discount factor
     train_with_batches: bool = False
     batch_size: int = 24
+
     continuous_actions: bool = True
     should_scale_states: bool = True
+
     entropy_coeff: float = 1
     entropy_decay: float = 1
+
+    use_tensorboard: bool = False
+    tensorboard_log_dir: str = None
+
+    env_can_be_solved: bool = True
 
     def should_render(self, episode_number: int) -> bool:
         return self.render_frequency > 0 and episode_number % self.render_frequency == 0
 
     def should_log(self, episode_number: int) -> bool:
         return self.logging_frequency > 0 and episode_number % self.logging_frequency == 0
+
+    def get_tensorboard_writer(self, env: gym.Env) -> SummaryWriter:
+        if self.tensorboard_log_dir is not None:
+            return SummaryWriter(f"runs/{env.unwrapped.spec.id}/{self.tensorboard_log_dir}")
+        else:
+            current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+            return SummaryWriter(f"runs/{env.unwrapped.spec.id}/{current_time}")
 
 
 
@@ -193,3 +211,34 @@ def run_model(policy: torch.nn.Module, env: gym.Env, continuous_actions: bool = 
             state = new_state
             if done:
                 break
+
+
+def log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer):
+    if run_params.use_tensorboard:
+        if run_params.env_can_be_solved:
+            writer.add_scalar("Data/Solved", t < env.spec.max_episode_steps - 1, episode_number)
+
+        writer.add_scalar("Data/Average reward", float(training_info.episode_reward), episode_number)
+        writer.add_scalar("Data/Episode reward", float(training_info.episode_reward), episode_number)
+        writer.add_scalar("Data/Running reward", float(training_info.running_reward), episode_number)
+        writer.add_scalar("Data/Last reward", float(reward), episode_number)
+        writer.add_scalar("Data/Number of steps per episode", t, episode_number)
+        writer.flush()
+
+
+def log_on_console(env, episode_number, reward, run_params: RunParams, t, training_info):
+    if run_params.should_log(episode_number):
+        solvedMessage = f"Solved: {t < env.spec.max_episode_steps - 1}\t" if run_params.env_can_be_solved else ""
+        print(f"Episode {episode_number}\t"
+              f"{solvedMessage}"
+              f"Avg. reward: {float(training_info.episode_reward) / t:.2f}\t"
+              f"Episode reward: {float(training_info.episode_reward):.2f}\t"
+              f"Running Reward: {float(training_info.running_reward):.2f}\t"
+              f"Last Reward: {float(reward):.2f}\t"
+              f"# Steps in episode: {t}")
+
+
+def close_tensorboard(run_params, writer):
+    if run_params.use_tensorboard:
+        writer.flush()
+        writer.close()
