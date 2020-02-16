@@ -118,10 +118,11 @@ def actor_critic_train_per_episode(
         if run_params.should_log(episode_number):
             print(f"Episode {episode_number}\t"
                   f"Solved: {t < env.spec.max_episode_steps - 1}\t"
-                  f"Average reward: {training_info.episode_reward / t:.2f}\t"
-                  f"Episode reward: {training_info.episode_reward:.2f}\t"
-                  f"Running Reward: {training_info.running_reward:.2f}\t"
-                  f"Number of steps during episode: {t}")
+                  f"Avg. reward: {float(training_info.episode_reward) / t:.2f}\t"
+                  f"Episode reward: {float(training_info.episode_reward):.2f}\t"
+                  f"Running Reward: {float(training_info.running_reward):.2f}\t"
+                  f"Last Reward: {float(reward):.2f}\t"
+                  f"# Steps in episode: {t}")
 
         # Check if we have solved the environment reliably
         if env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:
@@ -191,10 +192,11 @@ def actor_critic_train_per_step(
         if run_params.should_log(episode_number):
             print(f"Episode {episode_number}\t"
                   f"Solved: {t < env.spec.max_episode_steps - 1}\t"
-                  f"Average reward: {float(training_info.episode_reward) / t:.2f}\t"
+                  f"Avg. reward: {float(training_info.episode_reward) / t:.2f}\t"
                   f"Episode reward: {float(training_info.episode_reward):.2f}\t"
                   f"Running Reward: {float(training_info.running_reward):.2f}\t"
-                  f"Number of steps during episode: {t}")
+                  f"Last Reward: {float(reward):.2f}\t"
+                  f"# Steps in episode: {t}")
 
         # Check if we have solved the environment reliably
         if env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:

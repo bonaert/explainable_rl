@@ -12,6 +12,8 @@ if __name__ == "__main__":
     # optimizer = torch.optim.Adam(params=simple_policy.parameters(), lr=1e-3)
     # reinforceTraining(simple_policy, env, optimizer, continuous_actions=True)
 
+    # TODO: doesn't solve it, need to improve this
+
     simple_policy = SimplePolicyContinuous2(input_size=3, output_size=1)
     simple_critic = SimpleCritic2(input_size=3)
     optimizer = torch.optim.Adam(params=list(simple_policy.parameters()) + list(simple_critic.parameters()), lr=1e-3)

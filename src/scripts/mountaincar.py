@@ -19,7 +19,9 @@ if __name__ == "__main__":
                                      lr=5e-5)
         run_params = RunParams(continuous_actions=True,
                                should_scale_states=True,
-                               render_frequency=0)
+                               render_frequency=0,
+                               entropy_coeff=0.1,
+                               entropy_decay=0.985)
         reinforceTraining(simple_policy, env, optimizer, run_params)
     else:
         optimizer = torch.optim.Adam([

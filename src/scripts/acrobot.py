@@ -16,6 +16,8 @@ if __name__ == "__main__":
                            entropy_coeff=0.005,
                            entropy_decay=0.99)
 
+    # TODO: doesn't solve it, need to improve this
+
     # simple_policy = SimplePolicyDiscrete(input_size=6, output_size=3)
     # optimizer = torch.optim.Adam(params=simple_policy.parameters(), lr=5e-6)
     # reinforceTraining(simple_policy, env, optimizer, run_params)
