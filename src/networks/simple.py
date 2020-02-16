@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
+from torch.nn.init import xavier_uniform_
 
 
 class SimplePolicyDiscrete(nn.Module):
@@ -53,7 +54,7 @@ class SimplePolicyContinuous(nn.Module):
         mu = torch.tanh(mu)
         mu = self.affine2Mu(mu)
         mu = torch.tanh(mu)
-        mu = self.affine3Mu(mu)  # No bias, raw matrix multiplication
+        mu = self.affine3Mu(mu)
 
         sigma = self.hiddenSigma.sum()
         sigma = torch.exp(sigma)
@@ -65,6 +66,7 @@ class SimpleCriticContinuous(nn.Module):
     """ Same architecture as in the Pytorch example file for the Actor Critic method
     See: https://github.com/pytorch/examples/blob/master/reinforcement_learning/actor_critic.py
     """
+
     def __init__(self, input_size: int):
         super(SimpleCriticContinuous, self).__init__()
         self.affine1 = nn.Linear(input_size, 128)
@@ -75,3 +77,68 @@ class SimpleCriticContinuous(nn.Module):
         state_value = self.value_head(x)
         return state_value
 
+
+class SimplePolicyContinuous2(nn.Module):
+    """
+    Variant of SimplePolicyContinuous with a simpler architecture, taken from
+    https://medium.com/@asteinbach/actor-critic-using-deep-rl-continuous-mountain-car-in-tensorflow-4c1fb2110f7c
+    """
+
+    def __init__(self, input_size: int, output_size: int):
+        super(SimplePolicyContinuous2, self).__init__()
+
+        self.affine1Mu = nn.Linear(input_size, 40)
+        self.affine2Mu = nn.Linear(40, 40)
+        self.affine3Mu = nn.Linear(40, output_size)
+        self.affine1Sigma = nn.Linear(input_size, 1)
+
+        xavier_uniform_(self.affine1Mu.weight)
+        xavier_uniform_(self.affine2Mu.weight)
+        xavier_uniform_(self.affine3Mu.weight)
+        xavier_uniform_(self.affine1Sigma.weight)
+        self.affine1Mu.bias.data.fill_(0)
+        self.affine2Mu.bias.data.fill_(0)
+        self.affine3Mu.bias.data.fill_(0)
+        self.affine1Sigma.bias.data.fill_(0)
+
+    def forward(self, x) -> Tuple[torch.Tensor, torch.Tensor]:
+        mu = self.affine1Mu(x)
+        mu = F.elu(mu)
+        mu = self.affine2Mu(mu)
+        mu = F.elu(mu)
+        mu = self.affine3Mu(mu)
+
+        sigma = self.affine1Sigma(x)
+        sigma = F.softplus(sigma) + 1e-5
+
+        return mu, sigma
+
+
+class SimpleCriticContinuous2(nn.Module):
+    """
+    Variant of SimpleCriticContinuous with a simpler architecture, taken from
+    https://medium.com/@asteinbach/actor-critic-using-deep-rl-continuous-mountain-car-in-tensorflow-4c1fb2110f7c
+    """
+
+    def __init__(self, input_size: int):
+        super(SimpleCriticContinuous2, self).__init__()
+
+        self.affine1 = nn.Linear(input_size, 400)
+        self.affine2 = nn.Linear(400, 400)
+        self.affine3 = nn.Linear(400, 1)
+
+        xavier_uniform_(self.affine1.weight)
+        xavier_uniform_(self.affine2.weight)
+        xavier_uniform_(self.affine3.weight)
+        self.affine1.bias.data.fill_(0)
+        self.affine2.bias.data.fill_(0)
+        self.affine3.bias.data.fill_(0)
+
+    def forward(self, x) -> torch.Tensor:
+        value = self.affine1(x)
+        value = F.elu(value)
+        value = self.affine2(value)
+        value = F.elu(value)
+        value = self.affine3(value)
+
+        return value

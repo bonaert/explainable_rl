@@ -1,8 +1,11 @@
 from dataclasses import field, dataclass
+from pathlib import Path
 from typing import List, Union, Optional
 
 import gym
+import numpy as np
 import torch
+import sklearn.preprocessing
 from torch.distributions import Categorical, Normal
 
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, SimpleCriticContinuous
@@ -74,9 +77,13 @@ class TrainingInfo:
             yield states, actions, discounted_rewards
 
 
+def prepare_state(state: np.ndarray) -> torch.Tensor:
+    return torch.from_numpy(state).float().unsqueeze(0)
+
+
 def select_action_discrete(state, policy: SimplePolicyDiscrete, training_info: TrainingInfo):
     # Get distribution
-    state = torch.from_numpy(state).float().unsqueeze(0)
+    state = prepare_state(state)
     probs = policy.forward(state)
 
     # Sample action and remember its log probability
@@ -91,7 +98,7 @@ def select_action_discrete(state, policy: SimplePolicyDiscrete, training_info: T
 
 def select_action_continuous(state, policy: SimplePolicyContinuous, training_info: TrainingInfo, env: gym.Env):
     # Get distribution
-    state = torch.from_numpy(state).float().unsqueeze(0)
+    state = prepare_state(state)
     mu, sigma = policy.forward(state)
 
     # Sample action and remember its log probability
@@ -107,5 +114,53 @@ def select_action_continuous(state, policy: SimplePolicyContinuous, training_inf
 
 
 def get_state_value(state, critic: SimpleCriticContinuous):
-    state = torch.from_numpy(state).float().unsqueeze(0)
-    return critic.forward(state)
+    return critic.forward(prepare_state(state))
+
+
+def save_model(model: torch.nn.Module, filename: str):
+    """ Saves the model in the data directory """
+    path = Path().cwd().parent.parent / 'data' / filename
+    torch.save(model.state_dict(), path.resolve().as_posix())
+
+
+def load_model(model_to_fill: torch.nn.Module, filename: str):
+    """ Load the model from a weights file inside the data directory"""
+    path = Path().cwd().parent.parent / 'data' / filename
+    model_to_fill.load_state_dict(torch.load(path.resolve().as_posix()))
+    model_to_fill.eval()
+    return model_to_fill
+
+
+def setup_scaler(env: gym.Env) -> sklearn.preprocessing.StandardScaler:
+    observation_examples = np.array([env.observation_space.sample() for _ in range(10000)])
+    scaler = sklearn.preprocessing.StandardScaler()
+    scaler.fit(observation_examples)
+    return scaler
+
+
+def scale_state(scaler: sklearn.preprocessing.StandardScaler, state: np.ndarray) -> np.ndarray:
+    return scaler.transform(state.reshape(1, -1))[0]
+
+
+def run_model(policy: torch.nn.Module, env: gym.Env, continuous_actions: bool = True):
+    scaler = setup_scaler(env)
+    training_info = TrainingInfo()
+
+    done = False
+    while not done:
+        state = env.reset()
+
+        # Do a whole episode (upto 10000 steps, don't want infinite steps)
+        for t in range(env.spec.max_episode_steps):
+            state = scale_state(scaler, state)
+            if continuous_actions:
+                action = select_action_continuous(state, policy, training_info, env)
+            else:
+                action = select_action_discrete(state, policy, training_info)
+
+            new_state, reward, done, _ = env.step(action)
+
+            env.render()
+            state = new_state
+            if done:
+                break

@@ -10,7 +10,7 @@ from torch.optim.optimizer import Optimizer
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous
 from src.training.common import select_action_continuous, select_action_discrete, TrainingInfo
 
-RENDER_FREQUENCY = 0  # Interval between renders (in number of episodes)
+RENDER_FREQUENCY = 50  # Interval between renders (in number of episodes)
 LOGGING_FREQUENCY = 1  # Interval between logs (in number of episodes)
 GAMMA = 0.99  # Discount factor
 BATCH_SIZE = 24
