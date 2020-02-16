@@ -1,3 +1,4 @@
+import random
 from dataclasses import field, dataclass
 from pathlib import Path
 from typing import List, Union, Optional
@@ -8,7 +9,28 @@ import torch
 import sklearn.preprocessing
 from torch.distributions import Categorical, Normal
 
-from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, SimpleCriticContinuous
+from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, SimpleCritic
+
+
+@dataclass
+class RunParams:
+    render_frequency: int = 1  # Interval between renders (in number of episodes)
+    logging_frequency: int = 1  # Interval between logs (in number of episodes)
+    gamma: float = 0.99  # Discount factor
+    train_with_batches: bool = False
+    batch_size: int = 24
+    continuous_actions: bool = True
+    should_scale_states: bool = True
+    entropy_coeff: float = 1
+    entropy_decay: float = 1
+
+    def should_render(self, episode_number: int) -> bool:
+        return self.render_frequency > 0 and episode_number % self.render_frequency == 0
+
+    def should_log(self, episode_number: int) -> bool:
+        return self.logging_frequency > 0 and episode_number % self.logging_frequency == 0
+
+
 
 
 @dataclass
@@ -24,6 +46,7 @@ class TrainingInfo:
     all_discounted_rewards: torch.Tensor = field(default_factory=lambda: torch.tensor([]))
     running_reward: float = None
     episode_reward: float = 0
+    episode_number: int = 0
     GAMMA: float = 0.99
 
     def reset(self):
@@ -54,6 +77,8 @@ class TrainingInfo:
             self.running_reward = 0.05 * self.episode_reward + 0.95 * self.running_reward
 
     def compute_discounted_rewards(self):
+        self.episode_number += 1
+
         # Compute discounted rewards at each step
         self.discounted_rewards = []
         discounted_reward = 0
@@ -72,7 +97,11 @@ class TrainingInfo:
         for i in range(0, self.discounted_rewards.shape[0], batch_size):
             indices = permutation[i: i + batch_size]
             states = torch.tensor(self.states)[indices]
-            actions = torch.cat(self.actions)[indices]
+
+            if type(self.actions[0]) == int:
+                actions = torch.tensor(self.actions)[indices]
+            else:
+                actions = torch.cat(self.actions)[indices]
             discounted_rewards = self.discounted_rewards[indices]
             yield states, actions, discounted_rewards
 
@@ -81,7 +110,7 @@ def prepare_state(state: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(state).float().unsqueeze(0)
 
 
-def select_action_discrete(state, policy: SimplePolicyDiscrete, training_info: TrainingInfo):
+def select_action_discrete(state, policy: SimplePolicyDiscrete, training_info: TrainingInfo, env: gym.Env):
     # Get distribution
     state = prepare_state(state)
     probs = policy.forward(state)
@@ -89,9 +118,9 @@ def select_action_discrete(state, policy: SimplePolicyDiscrete, training_info: T
     # Sample action and remember its log probability
     m = Categorical(probs)
     action = m.sample()
-    training_info.log_probs.append(
-        m.log_prob(action)
-    )
+
+    training_info.log_probs.append(m.log_prob(action))
+    training_info.entropies.append(m.entropy())
 
     return action.item()
 
@@ -113,7 +142,7 @@ def select_action_continuous(state, policy: SimplePolicyContinuous, training_inf
     return action
 
 
-def get_state_value(state, critic: SimpleCriticContinuous):
+def get_state_value(state, critic: SimpleCritic):
     return critic.forward(prepare_state(state))
 
 
@@ -156,7 +185,7 @@ def run_model(policy: torch.nn.Module, env: gym.Env, continuous_actions: bool = 
             if continuous_actions:
                 action = select_action_continuous(state, policy, training_info, env)
             else:
-                action = select_action_discrete(state, policy, training_info)
+                action = select_action_discrete(state, policy, training_info, env)
 
             new_state, reward, done, _ = env.step(action)
 

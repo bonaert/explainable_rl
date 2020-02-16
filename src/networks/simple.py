@@ -18,6 +18,8 @@ class SimplePolicyDiscrete(nn.Module):
         self.dropout = nn.Dropout(p=0.6)
         self.affine2 = nn.Linear(128, output_size)
 
+        self.output_size = output_size
+
     def forward(self, x):
         x = self.affine1(x)
         x = self.dropout(x)
@@ -35,6 +37,7 @@ class SimplePolicyContinuous(nn.Module):
 
     def __init__(self, input_size: int, output_size: int):
         super(SimplePolicyContinuous, self).__init__()
+        self.output_size = output_size
 
         self.affine1Mu = nn.Linear(input_size, 128)
         self.affine1Mu.bias.data.fill_(0)
@@ -62,13 +65,13 @@ class SimplePolicyContinuous(nn.Module):
         return mu, sigma
 
 
-class SimpleCriticContinuous(nn.Module):
+class SimpleCritic(nn.Module):
     """ Same architecture as in the Pytorch example file for the Actor Critic method
     See: https://github.com/pytorch/examples/blob/master/reinforcement_learning/actor_critic.py
     """
 
     def __init__(self, input_size: int):
-        super(SimpleCriticContinuous, self).__init__()
+        super(SimpleCritic, self).__init__()
         self.affine1 = nn.Linear(input_size, 128)
         self.value_head = nn.Linear(128, 1)
 
@@ -114,14 +117,14 @@ class SimplePolicyContinuous2(nn.Module):
         return mu, sigma
 
 
-class SimpleCriticContinuous2(nn.Module):
+class SimpleCritic2(nn.Module):
     """
     Variant of SimpleCriticContinuous with a simpler architecture, taken from
     https://medium.com/@asteinbach/actor-critic-using-deep-rl-continuous-mountain-car-in-tensorflow-4c1fb2110f7c
     """
 
     def __init__(self, input_size: int):
-        super(SimpleCriticContinuous2, self).__init__()
+        super(SimpleCritic2, self).__init__()
 
         self.affine1 = nn.Linear(input_size, 400)
         self.affine2 = nn.Linear(400, 400)
