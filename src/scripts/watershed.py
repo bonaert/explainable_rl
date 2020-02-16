@@ -2,7 +2,7 @@ import gym
 import gym_watershed
 import torch
 
-from src.policy.linear import SimplePolicyContinuous
+from src.networks.simple import SimplePolicyContinuous
 from src.training.reinforce import reinforceTraining
 
 if __name__ == "__main__":

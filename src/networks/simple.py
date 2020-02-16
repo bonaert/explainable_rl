@@ -59,3 +59,19 @@ class SimplePolicyContinuous(nn.Module):
         sigma = torch.exp(sigma)
 
         return mu, sigma
+
+
+class SimpleCriticContinuous(nn.Module):
+    """ Same architecture as in the Pytorch example file for the Actor Critic method
+    See: https://github.com/pytorch/examples/blob/master/reinforcement_learning/actor_critic.py
+    """
+    def __init__(self, input_size: int):
+        super(SimpleCriticContinuous, self).__init__()
+        self.affine1 = nn.Linear(input_size, 128)
+        self.value_head = nn.Linear(128, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.relu(self.affine1(x))
+        state_value = self.value_head(x)
+        return state_value
+

@@ -1,7 +1,7 @@
 import gym
 import torch
 
-from src.policy.linear import SimplePolicyDiscrete
+from src.networks.simple import SimplePolicyDiscrete
 from src.training.reinforce import reinforceTraining
 
 if __name__ == "__main__":
