@@ -9,6 +9,7 @@ import torch
 import sklearn.preprocessing
 from torch.distributions import Categorical, Normal
 from torch.utils.tensorboard import SummaryWriter
+import joblib
 
 from datetime import datetime
 
@@ -17,6 +18,10 @@ from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, Si
 
 def tensor_clamp(x: torch.tensor, minimum: np.ndarray, maxixum: np.ndarray):
     return torch.max(torch.min(x, torch.as_tensor(maxixum)), torch.as_tensor(minimum))
+
+
+def get_env_name(env: gym.Env):
+    return env.unwrapped.spec.id
 
 
 @dataclass
@@ -39,18 +44,26 @@ class RunParams:
 
     env_can_be_solved: bool = True
 
+    save_model_frequency: int = 0  # How frequently (in episodes) should we save the model (0 = never save)
+
+    stop_at_threshold: bool = True
+    maximum_episodes: int = 10000000000000000
+
     def should_render(self, episode_number: int) -> bool:
         return self.render_frequency > 0 and episode_number % self.render_frequency == 0
 
     def should_log(self, episode_number: int) -> bool:
         return self.logging_frequency > 0 and episode_number % self.logging_frequency == 0
 
+    def should_save_model(self, episode_number: int):
+        return self.logging_frequency > 0 and episode_number % self.logging_frequency == 0
+
     def get_tensorboard_writer(self, env: gym.Env) -> SummaryWriter:
         if self.tensorboard_log_dir is not None:
-            return SummaryWriter(f"runs/{env.unwrapped.spec.id}/{self.tensorboard_log_dir}")
+            return SummaryWriter(f"runs/{get_env_name(env)}/{self.tensorboard_log_dir}")
         else:
             current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-            return SummaryWriter(f"runs/{env.unwrapped.spec.id}/{current_time}")
+            return SummaryWriter(f"runs/{get_env_name(env)}/{current_time}")
 
 
 @dataclass
@@ -166,18 +179,31 @@ def get_state_value(state, critic: SimpleCritic):
     return critic.forward(prepare_state(state))
 
 
-def save_model(model: torch.nn.Module, filename: str):
-    """ Saves the model in the data directory """
-    path = Path().cwd().parent.parent / 'data' / filename
-    torch.save(model.state_dict(), path.resolve().as_posix())
+def get_path(env, filename, start_path):
+    path = start_path.parent.parent / 'data' / get_env_name(env) / filename
+    path.parent.mkdir(parents=True, exist_ok=True)  # Ensure the directory exists
+    full_path = path.resolve().as_posix()
+    return full_path
 
 
-def load_model(model_to_fill: torch.nn.Module, filename: str):
-    """ Load the model from a weights file inside the data directory"""
-    path = Path().cwd().parent.parent / 'data' / filename
-    model_to_fill.load_state_dict(torch.load(path.resolve().as_posix()))
+def save_model(model: torch.nn.Module, env: gym.Env, filename: str):
+    torch.save(model.state_dict(), get_path(env, filename, Path.cwd()))
+
+
+def save_scaler(scaler, env: gym.Env, filename: str):
+    joblib.dump(scaler, get_path(env, filename, Path.cwd()))
+
+
+def load_model(model_to_fill: torch.nn.Module, env: gym.Env, filename: str):
+    full_path = get_path(env, filename, Path.cwd().parent)
+    model_to_fill.load_state_dict(torch.load(full_path))
     model_to_fill.eval()
     return model_to_fill
+
+
+def load_scaler(env: gym.Env, filename: str):
+    full_path = get_path(env, filename, Path.cwd().parent)
+    return joblib.load(full_path)
 
 
 def setup_scaler(env: gym.Env) -> sklearn.preprocessing.StandardScaler:

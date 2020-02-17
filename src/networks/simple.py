@@ -162,13 +162,17 @@ def make_network(layer_sizes, activation, output_activation=nn.Identity):
 
 
 class DDPGPolicy(nn.Module):
-    def __init__(self, state_dim: int, action_dim: int):
+    def __init__(self, state_dim: int, action_dim: int, action_high: np.ndarray, action_low: np.ndarray):
         super().__init__()
         self.layers = make_network([state_dim, 256, 256, action_dim], nn.ReLU, nn.Tanh)
+        self.action_high = torch.tensor(action_high)
+        self.action_low = torch.tensor(action_low)
 
     def forward(self, states) -> torch.Tensor:
         """ Returns the actions as a torch Tensor (gradients can be computed)"""
-        return self.layers.forward(states)
+        actions = self.layers.forward(states)
+        actions = actions * (self.action_high - self.action_low) + (self.action_high + self.action_low)
+        return 0.5 * actions
 
     def get_actions(self, state) -> np.ndarray:
         """ Returns the actions as a Numpy array (no gradients will be computed) """
@@ -185,4 +189,6 @@ class DDPGValueEstimator(nn.Module):
         """ Returns the actions as a torch Tensor (gradients can be computed)"""
         # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
         full_input = torch.cat([states, actions], dim=-1)
-        return self.layers.forward(full_input).squeeze(-1)
+        value = self.layers.forward(full_input).squeeze(-1)
+        return 0.5 * value
+

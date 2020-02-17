@@ -1,6 +1,7 @@
+import copy
 import itertools
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import gym
 import numpy as np
@@ -10,7 +11,31 @@ from torch.utils.tensorboard import SummaryWriter
 
 from networks.simple import DDPGPolicy, DDPGValueEstimator
 from training.common import RunParams, TrainingInfo, setup_scaler, scale_state, log_on_console, log_on_tensorboard, \
-    close_tensorboard
+    close_tensorboard, save_model, save_scaler
+
+
+# Src: https://github.com/amuta/DDPG-MountainCarContinuous-v0/blob/master/OUNoise.py
+class OUNoise:
+    """Ornstein-Uhlenbeck process."""
+
+    def __init__(self, size=1, mu=0, theta=0.05, sigma=0.25):
+        """Initialize parameters and noise process."""
+        self.mu = mu * np.ones(size)
+        self.theta = theta
+        self.sigma = sigma
+        self.state = None
+        self.reset()
+
+    def reset(self):
+        """Reset the internal state (= noise) to mean (mu)."""
+        self.state = copy.copy(self.mu)
+
+    def sample(self):
+        """Update internal state and return it as a noise sample."""
+        x = self.state
+        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(len(x))
+        self.state = x + dx
+        return self.state
 
 
 @dataclass
@@ -32,8 +57,12 @@ class DDPGParams:
     polyak: float  # Polyak coefficient, indicating how much of target is changed
 
     noise_coeff: float  # We add noise_coeff * normal() noise to the actions
+    noise_source: OUNoise  # Source of noise
 
     start_steps: int  # During the first start_steps steps, we pick random actions
+
+    num_test_episodes: int  # Number of episodes used to evaluate the agent
+
 
 
 def sample_values(values: deque, indices: np.ndarray) -> torch.Tensor:
@@ -91,10 +120,12 @@ def compute_value_loss(batch_transitions, ddpg_params: DDPGParams, run_params: R
         values_target = ddpg_params.value_estimator_target.forward(new_states, actions_target_next_states)
         values_expected = rewards + run_params.gamma * (1 - dones) * values_target
 
+    # return F.smooth_l1_loss(values, values_expected)
     return ((values - values_expected) ** 2).mean()
 
 
-def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunParams, writer: SummaryWriter, step_number):
+def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunParams, writer: SummaryWriter,
+                  step_number):
     # Update the value function
     ddpg_params.value_optimizer.zero_grad()
     value_loss = compute_value_loss(batch_transitions, ddpg_params, run_params)
@@ -127,20 +158,44 @@ def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunPar
             for param, param_target in zip(normal.parameters(), target.parameters()):
                 # We use the inplace operators to avoid creating new tensor
                 param_target.data.mul_(ddpg_params.polyak)
-                param_target.data.add_((1 - ddpg_params.polyak) * param)
+                param_target.data.add_((1 - ddpg_params.polyak) * param.data)
 
 
-def select_action_ddpg(state, ddpg_params: DDPGParams, env: gym.Env) -> np.ndarray:
-    action = ddpg_params.policy.get_actions(torch.tensor(state))
-    action += ddpg_params.noise_coeff * np.random.randn(env.action_space.shape[0])  # Gaussian noise
+def select_action_ddpg(state, ddpg_params: DDPGParams, env: gym.Env, noise_coeff: float) -> np.ndarray:
+    action = ddpg_params.policy.get_actions(torch.tensor(state).float())
+    action += noise_coeff * ddpg_params.noise_source.sample()  # Gaussian noise
     action = np.clip(action, env.action_space.low, env.action_space.high)  # Clamp the action inside the action space
     return action
+
+
+def test_agent_performance(env: gym.Env, ddpg_params: DDPGParams, run_params: RunParams, writer: SummaryWriter,
+                           test_episode_number: int, scaler):
+    episode_rewards, episode_lengths = [], []
+    for j in range(ddpg_params.num_test_episodes):
+        state, done, episode_reward, episode_length = env.reset(), False, 0, 0
+        while not done:
+            state_scaled = scale_state(scaler, state) if run_params.should_scale_states else state
+            action = select_action_ddpg(state_scaled, ddpg_params, env, 0)  # No noise, pure exploitation
+            state, reward, done, _ = env.step(action)
+            episode_reward += reward
+            episode_length += 1
+
+        episode_rewards.append(episode_reward)
+        episode_lengths.append(episode_length)
+
+    print(f"\tAverage test performance: {np.mean(episode_rewards):.3f}"
+          f"\tAverage Episode Steps {np.mean(episode_lengths):.3f}")
+
+    if run_params.use_tensorboard:
+        writer.add_scalar("Test Performance/Average Performance", np.mean(episode_rewards), test_episode_number)
+        writer.add_scalar("Test Performance/Average Episode Steps", np.mean(episode_lengths), test_episode_number)
 
 
 def ddpg_train(
         env: gym.Env,
         run_params: RunParams,
-        ddpg_params: DDPGParams):
+        ddpg_params: DDPGParams,
+        stop_at_threshold: bool = True):
     """
     :param env: the OpenAI gym environment
     :param run_params: the general training parameters shared by all training algorithm
@@ -159,18 +214,17 @@ def ddpg_train(
     writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
     # Setup scaler, training info and replay buffer
-    if run_params.should_scale_states:
-        scaler = setup_scaler(env)
+    scaler = setup_scaler(env) if run_params.should_scale_states else None
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     replay_buffer = ReplayBuffer(ddpg_params.replay_buffer_size)
 
-    step_number = 0
+    step_number, test_episode_num = 0, 0
     max_episode_steps = env.spec.max_episode_steps
 
-    for episode_number in itertools.count():  # itertools.count() is basically range(+infinity)
+    for episode_number in range(run_params.maximum_episodes):
         state = env.reset()
 
-        # Do a whole episode (upto 10000 steps, don't want infinite steps)
+        # Do a whole episode
         for t in range(max_episode_steps):
             if run_params.should_scale_states:
                 state = scale_state(scaler, state)
@@ -178,8 +232,8 @@ def ddpg_train(
             # Pick an action, execute and observe the results
             # Note: in the first start_steps steps, we randomly pick actions from
             # the action space (uniformly) to have better exploration.
-            if t > ddpg_params.start_steps:
-                action = select_action_ddpg(state, ddpg_params, env)
+            if step_number > ddpg_params.start_steps:
+                action = select_action_ddpg(state, ddpg_params, env, ddpg_params.noise_coeff * 0.99 ** episode_number)
             else:
                 action = env.action_space.sample()
 
@@ -193,7 +247,7 @@ def ddpg_train(
             training_info.record_step(state, action, reward)
 
             # Add the transition to the replay buffer
-            new_state_scaled = scale_state(scaler, state) if run_params.should_scale_states else new_state
+            new_state_scaled = scale_state(scaler, new_state) if run_params.should_scale_states else new_state
             replay_buffer.store(state, action, reward, new_state_scaled, done and t < max_episode_steps - 1)
 
             state = new_state
@@ -207,6 +261,17 @@ def ddpg_train(
 
             step_number += 1
 
+        if episode_number % 10 == 0:
+            test_agent_performance(env, ddpg_params, run_params, writer, test_episode_num, scaler)
+            test_episode_num += 1
+
+        if run_params.should_save_model(episode_number):
+            save_model(ddpg_params.policy_target, env, "policy_target.data")
+            save_model(ddpg_params.value_estimator_target, env, "value_estimator_target.data")
+
+            if scaler is not None:
+                save_scaler(scaler, env, "scaler.data")
+
         training_info.update_running_reward()
 
         # Add some logging
@@ -214,7 +279,7 @@ def ddpg_train(
         log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer)
 
         # Check if we have solved the environment reliably
-        if env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:
+        if run_params.stop_at_threshold and env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:
             print(f"Solved! The running reward is {training_info.running_reward:.2f}, which is above the threshold of "
                   f"{env.spec.reward_threshold}. The last episode ran for {t} steps.")
             break
@@ -222,3 +287,29 @@ def ddpg_train(
         training_info.reset()
 
     close_tensorboard(run_params, writer)
+
+
+def ddpg_run(env, policy, scaler=None, render=True):
+    episode_number = 0
+    episode_rewards = []
+    while True:
+        state, done, episode_reward, episode_length = env.reset(), False, 0, 0
+        while not done:
+            if scaler:
+                state = scale_state(scaler, state)
+
+            action = policy.get_actions(torch.tensor(state).float())
+            action = np.clip(action, env.action_space.low, env.action_space.high)
+
+            state, reward, done, _ = env.step(action)
+            if render:
+                env.render()
+            episode_reward += reward
+            episode_length += 1
+        episode_rewards.append(episode_reward)
+
+        print(f"Episode {episode_number}\t"
+              f"Reward: {episode_reward:.3f}\t"
+              f"Number of steps: {episode_length}\t"
+              f"Avg reward: {np.mean(episode_rewards):.3f} +- {np.std(episode_rewards):.3f}")
+        episode_number += 1

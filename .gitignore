@@ -17,3 +17,4 @@ lib64
 
 data/*.data
 /src/scripts/runs/
+/data/*/*.data

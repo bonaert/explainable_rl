@@ -9,7 +9,7 @@ from networks.simple import SimplePolicyContinuous, SimplePolicyContinuous2, Sim
 from src.training.reinforce import reinforceTraining
 from training.actor_critic import actor_critic_train_per_step
 from training.common import RunParams
-from training.ddpg import DDPGParams, ddpg_train
+from training.ddpg import DDPGParams, ddpg_train, OUNoise
 
 if __name__ == "__main__":
     env = gym.make('Pendulum-v0')
@@ -33,14 +33,16 @@ if __name__ == "__main__":
     # actor_critic_train_per_step(simple_policy, simple_critic, env, optimizer, run_params, lr_scheduler=None)
 
     run_params = RunParams(continuous_actions=True,
-                           should_scale_states=True,
-                           render_frequency=100,
+                           should_scale_states=False,
+                           render_frequency=20,
                            entropy_coeff=0,
                            entropy_decay=1,
+                           gamma=0.99,
                            use_tensorboard=True,
-                           env_can_be_solved=False)
+                           env_can_be_solved=False,
+                           save_model_frequency=0)
 
-    ddpg_policy = DDPGPolicy(3, 1)
+    ddpg_policy = DDPGPolicy(3, 1, env.action_space.high, env.action_space.low)
     ddpg_value_estimator = DDPGValueEstimator(3, 1)
     ddpg_params = DDPGParams(
         policy=ddpg_policy,
@@ -49,13 +51,15 @@ if __name__ == "__main__":
         value_estimator_target=copy.deepcopy(ddpg_value_estimator),
         policy_optimizer=Adam(ddpg_policy.parameters(), lr=1e-4),
         value_optimizer=Adam(ddpg_value_estimator.parameters(), lr=1e-3),
-        replay_buffer_size=100000,
+        replay_buffer_size=1000000,
         update_frequency=50,
         update_start=1000,
-        batch_size=128,
-        polyak=0.995,
+        batch_size=100,
+        polyak=0.999,
         noise_coeff=0.1,
-        start_steps=10000
+        noise_source=OUNoise(1),
+        start_steps=10000,
+        num_test_episodes=10
     )
 
     ddpg_train(env, run_params, ddpg_params)
