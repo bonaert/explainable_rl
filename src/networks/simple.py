@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -145,3 +146,43 @@ class SimpleCritic2(nn.Module):
         value = self.affine3(value)
 
         return value
+
+
+# The following code and architecture was heavily inspired from the Spinning Up repository by OpenAI
+# Source: https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/ddpg/core.py
+
+
+def make_network(layer_sizes, activation, output_activation=nn.Identity):
+    layers = []
+    for i in range(len(layer_sizes) - 1):
+        size_before, size_after = layer_sizes[i], layer_sizes[i + 1]
+        layers.append(nn.Linear(size_before, size_after))
+        layers.append(activation() if i < len(layer_sizes) - 2 else output_activation())
+    return nn.Sequential(*layers)
+
+
+class DDPGPolicy(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int):
+        super().__init__()
+        self.layers = make_network([state_dim, 256, 256, action_dim], nn.ReLU, nn.Tanh)
+
+    def forward(self, states) -> torch.Tensor:
+        """ Returns the actions as a torch Tensor (gradients can be computed)"""
+        return self.layers.forward(states)
+
+    def get_actions(self, state) -> np.ndarray:
+        """ Returns the actions as a Numpy array (no gradients will be computed) """
+        with torch.no_grad():
+            return self.forward(state).numpy()
+
+
+class DDPGValueEstimator(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int):
+        super().__init__()
+        self.layers = make_network([state_dim + action_dim, 256, 256, 1], nn.ReLU)
+
+    def forward(self, states, actions) -> torch.Tensor:
+        """ Returns the actions as a torch Tensor (gradients can be computed)"""
+        # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
+        full_input = torch.cat([states, actions], dim=-1)
+        return self.layers.forward(full_input).squeeze(-1)

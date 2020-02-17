@@ -15,6 +15,10 @@ from datetime import datetime
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, SimpleCritic
 
 
+def tensor_clamp(x: torch.tensor, minimum: np.ndarray, maxixum: np.ndarray):
+    return torch.max(torch.min(x, torch.as_tensor(maxixum)), torch.as_tensor(minimum))
+
+
 @dataclass
 class RunParams:
     render_frequency: int = 1  # Interval between renders (in number of episodes)
@@ -47,8 +51,6 @@ class RunParams:
         else:
             current_time = datetime.now().strftime('%b%d_%H-%M-%S')
             return SummaryWriter(f"runs/{env.unwrapped.spec.id}/{current_time}")
-
-
 
 
 @dataclass
@@ -151,7 +153,7 @@ def select_action_continuous(state, policy: SimplePolicyContinuous, training_inf
     # Sample action and remember its log probability
     n = Normal(mu, sigma)
     action = n.sample()
-    action = action.clamp(env.action_space.low[0], env.action_space.high[0])
+    action = tensor_clamp(action, env.action_space.low, env.action_space.high)
 
     # This is not very clean. TODO: clean this up
     training_info.log_probs.append(n.log_prob(action))
@@ -218,7 +220,7 @@ def log_on_tensorboard(env, episode_number, reward, run_params, t, training_info
         if run_params.env_can_be_solved:
             writer.add_scalar("Data/Solved", t < env.spec.max_episode_steps - 1, episode_number)
 
-        writer.add_scalar("Data/Average reward", float(training_info.episode_reward), episode_number)
+        writer.add_scalar("Data/Average reward", float(training_info.episode_reward) / t, episode_number)
         writer.add_scalar("Data/Episode reward", float(training_info.episode_reward), episode_number)
         writer.add_scalar("Data/Running reward", float(training_info.running_reward), episode_number)
         writer.add_scalar("Data/Last reward", float(reward), episode_number)
