@@ -60,6 +60,19 @@ class SimplePolicyContinuous(nn.Module):
         mu = torch.tanh(mu)
         mu = self.affine3Mu(mu)
 
+        """
+        This network has decided that the sigma will not depend on the state. 
+        A possible question one might be asking is: why is there the exp() call below?
+        I found the answer in the Spinning Up website by OpenAI:
+        
+            "Note that in both cases we output log standard deviations instead of standard deviations directly. 
+            This is because log stds are free to take on any values in (-oo, oo), while stds must be nonnegative. 
+            It’s easier to train parameters if you don’t have to enforce those kinds of constraints. The standard 
+            deviations can be obtained immediately from the log standard deviations by exponentiating them, so 
+            we do not lose anything  by representing them this way."
+            
+        Src: https://spinningup.openai.com/en/latest/spinningup/rl_intro.html
+        """
         sigma = self.hiddenSigma.sum()
         sigma = torch.exp(sigma)
 
@@ -191,4 +204,3 @@ class DDPGValueEstimator(nn.Module):
         full_input = torch.cat([states, actions], dim=-1)
         value = self.layers.forward(full_input).squeeze(-1)
         return 0.5 * value
-
