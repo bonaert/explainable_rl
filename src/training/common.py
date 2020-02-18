@@ -56,7 +56,7 @@ class RunParams:
         return self.logging_frequency > 0 and episode_number % self.logging_frequency == 0
 
     def should_save_model(self, episode_number: int):
-        return self.logging_frequency > 0 and episode_number % self.logging_frequency == 0
+        return self.save_model_frequency > 0 and episode_number % self.save_model_frequency == 0
 
     def get_tensorboard_writer(self, env: gym.Env) -> SummaryWriter:
         if self.tensorboard_log_dir is not None:
@@ -169,7 +169,7 @@ def select_action_continuous(state, policy: SimplePolicyContinuous, training_inf
     action = tensor_clamp(action, env.action_space.low, env.action_space.high)
 
     # This is not very clean. TODO: clean this up
-    training_info.log_probs.append(n.log_prob(action))
+    training_info.log_probs.append(n.log_prob(action).sum())
     training_info.entropies.append(n.entropy())
 
     return action

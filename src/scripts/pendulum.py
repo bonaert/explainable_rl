@@ -40,7 +40,7 @@ if __name__ == "__main__":
                            gamma=0.99,
                            use_tensorboard=True,
                            env_can_be_solved=False,
-                           save_model_frequency=0)
+                           save_model_frequency=20)
 
     ddpg_policy = DDPGPolicy(3, 1, env.action_space.high, env.action_space.low)
     ddpg_value_estimator = DDPGValueEstimator(3, 1)

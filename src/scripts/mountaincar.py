@@ -60,7 +60,7 @@ if __name__ == "__main__":
                                gamma=0.99,
                                use_tensorboard=True,
                                env_can_be_solved=True,
-                               save_model_frequency=0,
+                               save_model_frequency=10,
                                stop_at_threshold=False,
                                maximum_episodes=100)
 
