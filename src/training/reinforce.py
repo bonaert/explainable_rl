@@ -7,7 +7,7 @@ from torch.optim.optimizer import Optimizer
 
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous
 from src.training.common import select_action_continuous, select_action_discrete, TrainingInfo, setup_scaler, \
-    scale_state, RunParams, log_on_console, log_on_tensorboard, close_tensorboard
+    scale_state, RunParams, log_on_console, log_on_tensorboard, close_tensorboard, save_model, save_scaler
 
 
 def train_policy(optimizer: Optimizer, training_info: TrainingInfo, run_params: RunParams):
@@ -75,8 +75,7 @@ def reinforceTraining(
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 
-    if run_params.should_scale_states:
-        scaler = setup_scaler(env)
+    scaler = setup_scaler(env) if run_params.should_scale_states else None
 
     writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
@@ -119,6 +118,12 @@ def reinforceTraining(
             train_policy_batches(policy, optimizer, training_info, run_params)
         else:
             train_policy(optimizer, training_info, run_params)
+
+        if run_params.should_save_model(episode_number):
+            save_model(policy, env, "policy.data")
+
+            if scaler is not None:
+                save_scaler(scaler, env, "scaler.data")
 
     close_tensorboard(run_params, writer)
 

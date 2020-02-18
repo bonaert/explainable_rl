@@ -220,7 +220,7 @@ def ddpg_train(
 
             # For debugging, log the Q-values
             if run_params.use_tensorboard:
-                s, a = torch.tensor(state), torch.tensor(action)
+                s, a = torch.tensor(state).float(), torch.tensor(action).float()
                 value = ddpg_params.value_estimator.forward(s, a)
                 value_target = ddpg_params.value_estimator_target.forward(s, a)
 

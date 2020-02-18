@@ -55,13 +55,11 @@ if __name__ == "__main__":
         value_optimizer=Adam(ddpg_value_estimator.parameters(), lr=1e-3),
         replay_buffer_size=1000000,
         update_frequency=50,
-        update_start=1000,
+        update_start=2000,
         batch_size=128,
         polyak=0.99,
         noise_coeff=1,
-        noise_source=OUNoise(action_dim),  # This noise is super important! Without it we can solve it. It feels
-        # a bit like cheating though, because it might simply be overfitting to
-        # the problem. It's able to solve mountain car though
+        noise_source=OUNoise(action_dim),
         num_random_action_steps=2000,
         num_test_episodes=10
     )

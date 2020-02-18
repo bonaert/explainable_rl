@@ -17,7 +17,8 @@ if __name__ == "__main__":
                            entropy_coeff=0.005,
                            entropy_decay=0.99,
                            use_tensorboard=True,
-                           env_can_be_solved=False)
+                           env_can_be_solved=False,
+                           save_model_frequency=10)
     reinforceTraining(simple_policy, env, optimizer, run_params)
 
     env.close()  # To avoid benign but annoying errors when the gym render window closes

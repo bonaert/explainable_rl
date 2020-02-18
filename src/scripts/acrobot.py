@@ -2,7 +2,6 @@ import gym
 import torch
 
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous2, SimpleCritic2
-from src.training.reinforce import reinforceTraining
 from training.actor_critic import actor_critic_train_per_step
 from training.common import RunParams
 

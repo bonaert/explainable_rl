@@ -217,17 +217,36 @@ def scale_state(scaler: sklearn.preprocessing.StandardScaler, state: np.ndarray)
     return scaler.transform(state.reshape(1, -1))[0]
 
 
-def run_model(policy: torch.nn.Module, env: gym.Env, continuous_actions: bool = True):
-    scaler = setup_scaler(env)
+def run_model_repeatedly(env, policy, continuous_actions: bool = True, scaler=None, render=True):
+    episode_number = 0
+    episode_rewards = []
+    while True:
+        episode_reward, episode_length = run_model(env, policy, scaler, render)
+        episode_rewards.append(episode_reward)
+
+        print(f"Episode {episode_number}\t"
+              f"Reward: {episode_reward:.3f}\t"
+              f"Number of steps: {episode_length}\t"
+              f"Avg reward: {np.mean(episode_rewards):.3f} +- {np.std(episode_rewards):.3f}")
+        episode_number += 1
+
+
+def run_model(
+        policy: torch.nn.Module,
+        env: gym.Env,
+        continuous_actions: bool = True,
+        render: bool = True,
+        scaler=None):
     training_info = TrainingInfo()
 
     done = False
+    episode_length, episode_reward = 0, 0
     while not done:
         state = env.reset()
 
         # Do a whole episode (upto 10000 steps, don't want infinite steps)
         for t in range(env.spec.max_episode_steps):
-            state = scale_state(scaler, state)
+            state = scale_state(scaler, state) if scaler is not None else state
             if continuous_actions:
                 action = select_action_continuous(state, policy, training_info, env)
             else:
@@ -235,10 +254,17 @@ def run_model(policy: torch.nn.Module, env: gym.Env, continuous_actions: bool = 
 
             new_state, reward, done, _ = env.step(action)
 
-            env.render()
+            if render:
+                env.render()
+
             state = new_state
+            episode_reward += reward
+            episode_length += 1
+
             if done:
                 break
+
+    return episode_reward, episode_length
 
 
 def log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer):
