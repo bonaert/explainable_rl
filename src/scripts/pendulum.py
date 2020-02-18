@@ -9,7 +9,8 @@ from networks.simple import SimplePolicyContinuous, SimplePolicyContinuous2, Sim
 from src.training.reinforce import reinforceTraining
 from training.actor_critic import actor_critic_train_per_step
 from training.common import RunParams
-from training.ddpg import DDPGParams, ddpg_train, OUNoise
+from training.ddpg import DDPGParams, ddpg_train
+from training.noise import OUNoise
 
 if __name__ == "__main__":
     env = gym.make('Pendulum-v0')
@@ -58,7 +59,7 @@ if __name__ == "__main__":
         polyak=0.999,
         noise_coeff=0.1,
         noise_source=OUNoise(1),
-        start_steps=10000,
+        num_random_action_steps=10000,
         num_test_episodes=10
     )
 

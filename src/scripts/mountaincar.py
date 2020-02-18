@@ -10,7 +10,8 @@ from src.networks.simple import SimplePolicyContinuous, SimpleCritic, SimplePoli
 from src.training.reinforce import reinforceTraining
 from training.actor_critic import actor_critic_train_per_episode, actor_critic_train_per_step
 from training.common import save_model, RunParams
-from training.ddpg import DDPGParams, ddpg_train, OUNoise
+from training.ddpg import DDPGParams, ddpg_train
+from training.noise import OUNoise
 
 if __name__ == "__main__":
     env = gym.make('MountainCarContinuous-v0')
@@ -82,7 +83,7 @@ if __name__ == "__main__":
             noise_source=OUNoise(action_dim),  # This noise is super important! Without it we can solve it. It feels
                                                # a bit like cheating though, because it might simply be overfitting to
                                                # the problem. It's able to solve mountain car though
-            start_steps=0,
+            num_random_action_steps=0,
             num_test_episodes=10
         )
 

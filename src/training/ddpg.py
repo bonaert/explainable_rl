@@ -1,41 +1,20 @@
-import copy
-import itertools
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Union
 
 import gym
 import numpy as np
 import torch
 from torch.optim.optimizer import Optimizer
 from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
+
 
 from networks.simple import DDPGPolicy, DDPGValueEstimator
 from training.common import RunParams, TrainingInfo, setup_scaler, scale_state, log_on_console, log_on_tensorboard, \
     close_tensorboard, save_model, save_scaler
 
-
-# Src: https://github.com/amuta/DDPG-MountainCarContinuous-v0/blob/master/OUNoise.py
-class OUNoise:
-    """Ornstein-Uhlenbeck process."""
-
-    def __init__(self, size=1, mu=0, theta=0.05, sigma=0.25):
-        """Initialize parameters and noise process."""
-        self.mu = mu * np.ones(size)
-        self.theta = theta
-        self.sigma = sigma
-        self.state = None
-        self.reset()
-
-    def reset(self):
-        """Reset the internal state (= noise) to mean (mu)."""
-        self.state = copy.copy(self.mu)
-
-    def sample(self):
-        """Update internal state and return it as a noise sample."""
-        x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(len(x))
-        self.state = x + dx
-        return self.state
+from training.noise import OUNoise, NormalNoise
 
 
 @dataclass
@@ -57,12 +36,13 @@ class DDPGParams:
     polyak: float  # Polyak coefficient, indicating how much of target is changed
 
     noise_coeff: float  # We add noise_coeff * normal() noise to the actions
-    noise_source: OUNoise  # Source of noise
+    noise_source: Union[OUNoise, NormalNoise]  # Source of noise
 
-    start_steps: int  # During the first start_steps steps, we pick random actions
+    num_random_action_steps: int  # During the first start_steps steps, we pick random actions
 
     num_test_episodes: int  # Number of episodes used to evaluate the agent
 
+    test_frequency: int = 10  # How often we test the agent (in number of episodes)
 
 
 def sample_values(values: deque, indices: np.ndarray) -> torch.Tensor:
@@ -120,8 +100,8 @@ def compute_value_loss(batch_transitions, ddpg_params: DDPGParams, run_params: R
         values_target = ddpg_params.value_estimator_target.forward(new_states, actions_target_next_states)
         values_expected = rewards + run_params.gamma * (1 - dones) * values_target
 
-    # return F.smooth_l1_loss(values, values_expected)
-    return ((values - values_expected) ** 2).mean()
+    return F.smooth_l1_loss(values, values_expected)
+    #return ((values - values_expected) ** 2).mean()
 
 
 def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunParams, writer: SummaryWriter,
@@ -220,6 +200,7 @@ def ddpg_train(
 
     step_number, test_episode_num = 0, 0
     max_episode_steps = env.spec.max_episode_steps
+    value_time_step = 0
 
     for episode_number in range(run_params.maximum_episodes):
         state = env.reset()
@@ -232,10 +213,22 @@ def ddpg_train(
             # Pick an action, execute and observe the results
             # Note: in the first start_steps steps, we randomly pick actions from
             # the action space (uniformly) to have better exploration.
-            if step_number > ddpg_params.start_steps:
+            if step_number >= ddpg_params.num_random_action_steps:
                 action = select_action_ddpg(state, ddpg_params, env, ddpg_params.noise_coeff * 0.99 ** episode_number)
             else:
                 action = env.action_space.sample()
+
+            # For debugging, log the Q-values
+            if run_params.use_tensorboard:
+                s, a = torch.tensor(state), torch.tensor(action)
+                value = ddpg_params.value_estimator.forward(s, a)
+                value_target = ddpg_params.value_estimator_target.forward(s, a)
+
+                for action_index in range(a.shape[0]):
+                    writer.add_scalar(f"Action/{action_index}", a[action_index], value_time_step)
+                writer.add_scalar("Q-values/Normal Network", value, value_time_step)
+                writer.add_scalar("Q-values/Target Network", value_target, value_time_step)
+                value_time_step += 1
 
             new_state, reward, done, _ = env.step(action)
 
@@ -261,7 +254,7 @@ def ddpg_train(
 
             step_number += 1
 
-        if episode_number % 10 == 0:
+        if episode_number % ddpg_params.test_frequency == 0:
             test_agent_performance(env, ddpg_params, run_params, writer, test_episode_num, scaler)
             test_episode_num += 1
 
@@ -285,6 +278,7 @@ def ddpg_train(
             break
 
         training_info.reset()
+        ddpg_params.noise_source.reset()
 
     close_tensorboard(run_params, writer)
 

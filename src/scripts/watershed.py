@@ -8,7 +8,8 @@ from torch.optim import Adam
 from src.networks.simple import SimplePolicyContinuous, DDPGPolicy, DDPGValueEstimator
 from src.training.reinforce import reinforceTraining
 from training.common import RunParams
-from training.ddpg import DDPGParams, OUNoise, ddpg_train
+from training.ddpg import DDPGParams, ddpg_train
+from training.noise import OUNoise
 
 if __name__ == "__main__":
     env = gym.make('watershed-v0')
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         noise_source=OUNoise(action_dim),  # This noise is super important! Without it we can solve it. It feels
         # a bit like cheating though, because it might simply be overfitting to
         # the problem. It's able to solve mountain car though
-        start_steps=2000,
+        num_random_action_steps=2000,
         num_test_episodes=10
     )
 
