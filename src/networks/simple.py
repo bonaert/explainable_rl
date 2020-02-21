@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import numpy as np
 import torch
@@ -22,7 +22,7 @@ class SimplePolicyDiscrete(nn.Module):
 
         self.output_size = output_size
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.affine1(x)
         x = self.dropout(x)
         x = F.relu(x)
@@ -54,7 +54,7 @@ class SimplePolicyContinuous(nn.Module):
         # the results will stay very bad.
         self.hiddenSigma = Parameter(torch.zeros(32), requires_grad=True)
 
-    def forward(self, x) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         mu = self.affine1Mu(x)
         mu = torch.tanh(mu)
         mu = self.affine2Mu(mu)
@@ -119,7 +119,7 @@ class SimplePolicyContinuous2(nn.Module):
         self.affine3Mu.bias.data.fill_(0)
         self.affine1Sigma.bias.data.fill_(0)
 
-    def forward(self, x) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         mu = self.affine1Mu(x)
         mu = F.elu(mu)
         mu = self.affine2Mu(mu)
@@ -152,7 +152,7 @@ class SimpleCritic2(nn.Module):
         self.affine2.bias.data.fill_(0)
         self.affine3.bias.data.fill_(0)
 
-    def forward(self, x) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         value = self.affine1(x)
         value = F.elu(value)
         value = self.affine2(value)
@@ -166,7 +166,7 @@ class SimpleCritic2(nn.Module):
 # Source: https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/ddpg/core.py
 
 
-def make_network(layer_sizes, activation, output_activation=nn.Identity,
+def make_network(layer_sizes: List[int], activation: torch.nn.Module, output_activation: torch.nn.Module = nn.Identity,
                  initialize_last_linear: bool = False) -> nn.Sequential:
     layers = []
     for i in range(len(layer_sizes) - 1):
@@ -189,13 +189,13 @@ class DDPGPolicy(nn.Module):
         self.action_high = torch.tensor(action_high)
         self.action_low = torch.tensor(action_low)
 
-    def forward(self, states) -> torch.Tensor:
+    def forward(self, states: torch.Tensor) -> torch.Tensor:
         """ Returns the actions as a torch Tensor (gradients can be computed)"""
         actions = self.layers.forward(states)
         actions = actions * (self.action_high - self.action_low) + (self.action_high + self.action_low)
         return 0.5 * actions
 
-    def get_actions(self, state) -> np.ndarray:
+    def get_actions(self, state: torch.Tensor) -> np.ndarray:
         """ Returns the actions as a Numpy array (no gradients will be computed) """
         with torch.no_grad():
             return self.forward(state).numpy()
@@ -206,7 +206,7 @@ class DDPGValueEstimator(nn.Module):
         super().__init__()
         self.layers = make_network([state_dim + action_dim, 256, 256, 1], nn.ReLU, initialize_last_linear=True)
 
-    def forward(self, states, actions) -> torch.Tensor:
+    def forward(self, states: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
         """ Returns the actions as a torch Tensor (gradients can be computed)"""
         # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
         full_input = torch.cat([states, actions], dim=-1)
@@ -239,7 +239,7 @@ class SacPolicy(nn.Module):
         self.action_high = torch.tensor(action_high)
         self.action_low = torch.tensor(action_low)
 
-    def forward(self, states, deterministic=False, compute_log_prob=True) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, states: torch.Tensor, deterministic=False, compute_log_prob=True) -> Tuple[torch.Tensor, torch.Tensor]:
         """ Returns the actions and their log probs as a torch Tensors (gradients can be computed)"""
         hidden_state = self.layers.forward(states)
         mu = self.mu_layer(hidden_state)
@@ -270,8 +270,9 @@ class SacPolicy(nn.Module):
         actions = actions * (self.action_high - self.action_low) / 2 + (self.action_high + self.action_low) / 2
         return actions, log_prob
 
-    def get_actions(self, state, deterministic=False, compute_log_prob=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        """ Returns the actions as a Numpy array (no gradients will be computed) """
+    def get_actions(self, state: torch.Tensor, deterministic=False, compute_log_prob=False) \
+            -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """ Returns the actions as a Numpy array (no gradients will be computed) and optionally its log probability """
         with torch.no_grad():
             actions, log_prob = self.forward(state, deterministic, compute_log_prob)
             if compute_log_prob:
@@ -285,7 +286,7 @@ class SacValueEstimator(nn.Module):
         super().__init__()
         self.layers = make_network([state_dim + action_dim, 256, 256, 1], nn.ReLU)
 
-    def forward(self, states, actions) -> torch.Tensor:
+    def forward(self, states: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
         """ Returns the actions as a torch Tensor (gradients can be computed)"""
         # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
         full_input = torch.cat([states, actions], dim=-1)

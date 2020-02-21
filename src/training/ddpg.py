@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 
 from networks.simple import DDPGPolicy, DDPGValueEstimator
-from training.common import RunParams, TrainingInfo, setup_scaler, scale_state, log_on_console, log_on_tensorboard, \
+from training.common import RunParams, TrainingInfo, setup_observation_scaler, scale_state, log_on_console, log_on_tensorboard, \
     close_tensorboard, save_model, save_scaler, polyak_average, policy_run, load_model, load_scaler
 
 from training.noise import OUNoise, NormalNoise
@@ -134,11 +134,7 @@ def test_agent_performance(env: gym.Env, ddpg_params: DDPGParams, run_params: Ru
         writer.add_scalar("Test Performance/Average Episode Steps", np.mean(episode_lengths), test_episode_number)
 
 
-def ddpg_train(
-        env: gym.Env,
-        run_params: RunParams,
-        ddpg_params: DDPGParams,
-        stop_at_threshold: bool = True):
+def ddpg_train(env: gym.Env, run_params: RunParams, ddpg_params: DDPGParams):
     """
     :param env: the OpenAI gym environment
     :param run_params: the general training parameters shared by all training algorithm
@@ -157,7 +153,7 @@ def ddpg_train(
     writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
     # Setup scaler, training info and replay buffer
-    scaler = setup_scaler(env) if run_params.should_scale_states else None
+    scaler = setup_observation_scaler(env) if run_params.should_scale_states else None
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     replay_buffer = ReplayBuffer(ddpg_params.replay_buffer_size)
 

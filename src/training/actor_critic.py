@@ -2,13 +2,14 @@ import itertools
 
 import gym
 import torch
+import numpy as np
 import torch.nn.functional as F
 
 from src.networks.simple import SimplePolicyContinuous, SimpleCritic
 from torch.optim.optimizer import Optimizer
 
 from src.training.common import select_action_discrete, select_action_continuous, TrainingInfo, get_state_value, \
-    prepare_state, setup_scaler, scale_state, RunParams, close_tensorboard
+    prepare_state, setup_observation_scaler, scale_state, RunParams, close_tensorboard
 from training.common import log_on_tensorboard, log_on_console
 
 
@@ -40,13 +41,13 @@ def train_policy_on_episode(optimizer: Optimizer, training_info: TrainingInfo, e
 def train_policy_on_step(
         critic: SimpleCritic,
         optimizer: Optimizer,
-        reward,
-        state,
-        next_state,
-        gamma,
-        log_prob,
-        entropy,
-        episode_number,
+        reward: float,
+        state: np.ndarray,
+        next_state: np.ndarray,
+        gamma: float,
+        log_prob: float,
+        entropy: float,
+        episode_number: int,
         run_params: RunParams):
     # Inspired from https://gym.openai.com/evaluations/eval_gUhDnmlbTKG1qW0jS6HSg/
 
@@ -60,7 +61,7 @@ def train_policy_on_step(
     # loss = -(log_prob + 0.99 ** episode_number * entropy) * td_error
     optimizer.zero_grad()
     loss = -(log_prob + run_params.entropy_coeff * run_params.entropy_decay ** episode_number * entropy) * td_error + \
-            F.mse_loss(state_value_prediction, state_value_target)
+           F.mse_loss(state_value_prediction, state_value_target)
     loss.backward()
     optimizer.step()
 
@@ -72,21 +73,13 @@ def actor_critic_train_per_episode(
         optimizer: Optimizer,
         run_params: RunParams,
         lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None):
-    """
-    :param policy: the policy that picks the action and improves over time
-    :param critic: the critic that is used to evaluate each state
-    :param env: the OpenAI gym environment
-    :param optimizer: optimizer that improves the policy
-    :param continuous_actions: is the action space continuous
-    :param lr_scheduler:
-    """
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 
     # https://medium.com/@asteinbach/actor-critic-using-deep-rl-continuous-mountain-car-in-tensorflow-4c1fb2110f7c
     # says it's crucial to scale the state
     if run_params.should_scale_states:
-        scaler = setup_scaler(env)
+        scaler = setup_observation_scaler(env)
 
     writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
@@ -101,7 +94,7 @@ def actor_critic_train_per_episode(
             if run_params.continuous_actions:
                 action = select_action_continuous(state, policy, training_info, env)
             else:
-                action = select_action_discrete(state, policy, training_info, env)
+                action = select_action_discrete(state, policy, training_info)
 
             state_value = get_state_value(state, critic)
 
@@ -135,7 +128,6 @@ def actor_critic_train_per_episode(
     close_tensorboard(run_params, writer)
 
 
-
 def actor_critic_train_per_step(
         policy: SimplePolicyContinuous,
         critic: SimpleCritic,
@@ -144,14 +136,6 @@ def actor_critic_train_per_step(
         run_params: RunParams,
         lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None):
     """
-    :param policy: the policy that picks the action and improves over time
-    :param critic: the critic that is used to evaluate each state
-    :param env: the OpenAI gym environment
-    :param optimizer: optimizer that improves the policy
-    :param run_params:
-    :param lr_scheduler:
-
-
     https://medium.com/@asteinbach/actor-critic-using-deep-rl-continuous-mountain-car-in-tensorflow-4c1fb2110f7c
     says it's crucial to scale the state
     """
@@ -159,7 +143,7 @@ def actor_critic_train_per_step(
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 
     if run_params.should_scale_states:
-        scaler = setup_scaler(env)
+        scaler = setup_observation_scaler(env)
 
     writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
@@ -172,7 +156,7 @@ def actor_critic_train_per_step(
             if run_params.continuous_actions:
                 action = select_action_continuous(scaled_state, policy, training_info, env)
             else:
-                action = select_action_discrete(scaled_state, policy, training_info, env)
+                action = select_action_discrete(scaled_state, policy, training_info)
 
             state_value = get_state_value(scaled_state, critic)
 
@@ -207,6 +191,3 @@ def actor_critic_train_per_step(
             lr_scheduler.step(episode_number)
 
     close_tensorboard(run_params, writer)
-
-
-

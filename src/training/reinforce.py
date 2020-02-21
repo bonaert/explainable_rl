@@ -1,4 +1,5 @@
 import itertools
+from typing import List
 
 import gym
 import torch
@@ -6,7 +7,7 @@ from torch.distributions import Normal, Categorical
 from torch.optim.optimizer import Optimizer
 
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous
-from src.training.common import select_action_continuous, select_action_discrete, TrainingInfo, setup_scaler, \
+from src.training.common import select_action_continuous, select_action_discrete, TrainingInfo, setup_observation_scaler, \
     scale_state, RunParams, log_on_console, log_on_tensorboard, close_tensorboard, save_model, save_scaler
 
 
@@ -29,8 +30,8 @@ def train_policy(optimizer: Optimizer, training_info: TrainingInfo, run_params: 
     training_info.reset()
 
 
-def train_policy_batches(policy: SimplePolicyContinuous, optimizer: Optimizer, training_info: TrainingInfo,
-                         run_params: RunParams):
+def train_policy_batches(policy: SimplePolicyContinuous, optimizer: Optimizer,
+                         training_info: TrainingInfo, run_params: RunParams):
     training_info.compute_discounted_rewards()
 
     for (states, actions, discounted_rewards) in training_info.get_batches(run_params.batch_size):
@@ -39,7 +40,8 @@ def train_policy_batches(policy: SimplePolicyContinuous, optimizer: Optimizer, t
     training_info.reset()
 
 
-def train_batch(policy: SimplePolicyContinuous, states, actions, discounted_rewards, optimizer, episode_number, run_params):
+def train_batch(policy: SimplePolicyContinuous, states: List[torch.Tensor], actions: List[torch.Tensor],
+                discounted_rewards: List[torch.Tensor], optimizer: Optimizer, episode_number: int, run_params: RunParams):
     optimizer.zero_grad()
 
     policy_losses = []
@@ -64,18 +66,11 @@ def reinforceTraining(
         env: gym.Env,
         optimizer: Optimizer,
         run_params: RunParams):
-    """
-    :param run_params:
-    :param policy: the policy that picks the action and improves over time
-    :param env: the OpenAI gym environment
-    :param optimizer: optimizer that improves the policy
-    :return:
-    """
 
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 
-    scaler = setup_scaler(env) if run_params.should_scale_states else None
+    scaler = setup_observation_scaler(env) if run_params.should_scale_states else None
 
     writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
@@ -90,7 +85,7 @@ def reinforceTraining(
             if run_params.continuous_actions:
                 action = select_action_continuous(state, policy, training_info, env)
             else:
-                action = select_action_discrete(state, policy, training_info, env)
+                action = select_action_discrete(state, policy, training_info)
 
             new_state, reward, done, _ = env.step(action)
 

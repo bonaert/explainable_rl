@@ -1,15 +1,18 @@
 import itertools
 import random
 from dataclasses import dataclass
+from typing import Dict
 
 import gym
 import numpy as np
 import torch
 from torch.optim.optimizer import Optimizer
 from torch.utils.tensorboard import SummaryWriter
+import sklearn.preprocessing
 
 from networks.simple import SacPolicy, SacValueEstimator
-from training.common import RunParams, TrainingInfo, setup_scaler, scale_state, log_on_console, log_on_tensorboard, \
+from training.common import RunParams, TrainingInfo, setup_observation_scaler, scale_state, log_on_console, \
+    log_on_tensorboard, \
     close_tensorboard, save_model, save_scaler, polyak_average, policy_run, load_model, load_scaler
 
 from training.replay_buffer import ReplayBuffer
@@ -44,7 +47,7 @@ class SacParams:
     test_frequency: int = 10  # How often we test the agent (in number of episodes)
 
 
-def compute_value_loss(batch_transitions, sac_params: SacParams, run_params: RunParams):
+def compute_value_loss(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams, run_params: RunParams):
     states, actions, rewards = batch_transitions["states"], batch_transitions["actions"], batch_transitions["rewards"]
     new_states, dones = batch_transitions["new_states"], batch_transitions["dones"]
 
@@ -67,7 +70,7 @@ def compute_value_loss(batch_transitions, sac_params: SacParams, run_params: Run
     return value1_loss + value2_loss
 
 
-def compute_policy_loss(batch_transitions, sac_params: SacParams) -> torch.Tensor:
+def compute_policy_loss(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams) -> torch.Tensor:
     # Idea: we want to maximize the values of the actions predicted by the policy
     # and to minimize the log likelihood of the actions (policy gradient)
     # We therefore want to do gradient ascent, so we have to negate the loss
@@ -80,8 +83,8 @@ def compute_policy_loss(batch_transitions, sac_params: SacParams) -> torch.Tenso
     return (sac_params.alpha * log_actions - values).mean()
 
 
-def update_models(batch_transitions, sac_params: SacParams, run_params: RunParams, writer: SummaryWriter,
-                  step_number):
+def update_models(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams, run_params: RunParams,
+                  writer: SummaryWriter, step_number: int):
     # Update the value function
     sac_params.value_optimizer.zero_grad()
     value_loss = compute_value_loss(batch_transitions, sac_params, run_params)
@@ -115,13 +118,13 @@ def update_models(batch_transitions, sac_params: SacParams, run_params: RunParam
     polyak_average(sac_params.value_estimator2, sac_params.value_estimator2_target, sac_params.polyak)
 
 
-def select_action_sac(state, sac_params: SacParams, deterministic: bool = False,
-                      compute_log_prob: bool = False) -> np.ndarray:
+def select_action_sac(state: np.ndarray, sac_params: SacParams,
+                      deterministic=False, compute_log_prob=False) -> np.ndarray:
     return sac_params.policy.get_actions(torch.tensor(state).float(), deterministic, compute_log_prob)
 
 
 def test_agent_performance(env: gym.Env, sac_params: SacParams, run_params: RunParams, writer: SummaryWriter,
-                           test_episode_number: int, scaler):
+                           test_episode_number: int, scaler: sklearn.preprocessing.StandardScaler):
     with torch.no_grad():
         episode_rewards, episode_lengths = [], []
         for j in range(sac_params.num_test_episodes):
@@ -166,7 +169,7 @@ def sac_train(
     writer = run_params.get_tensorboard_writer(env) if run_params.use_tensorboard else None
 
     # Setup scaler, training info and replay buffer
-    scaler = setup_scaler(env) if run_params.should_scale_states else None
+    scaler = setup_observation_scaler(env) if run_params.should_scale_states else None
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     replay_buffer = ReplayBuffer(sac_params.replay_buffer_size)
 
@@ -267,7 +270,7 @@ def sac_train(
     close_tensorboard(run_params, writer)
 
 
-def save_model_sac(env, sac_params, scaler):
+def save_model_sac(env: gym.Env, sac_params: SacParams, scaler: sklearn.preprocessing.StandardScaler):
     save_model(sac_params.policy_target, env, "policy_target.data")
     save_model(sac_params.value_estimator1_target, env, "value_estimator1_target.data")
     save_model(sac_params.value_estimator2_target, env, "value_estimator2_target.data")
@@ -275,11 +278,12 @@ def save_model_sac(env, sac_params, scaler):
         save_scaler(scaler, env, "scaler.data")
 
 
-def sac_run(env, policy, scaler=None, render=True, run_once=False):
+def sac_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocessing.StandardScaler = None,
+            render=True, run_once=False):
     return policy_run(env, policy, scaler, render, say_deterministic=False, run_once=run_once)
 
 
-def sac_run_from_disk(env, has_scaler=True, render=True, run_once=False):
+def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False):
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     ddpg_policy = load_model(
