@@ -1,4 +1,3 @@
-from collections import deque
 from dataclasses import dataclass
 from typing import Union
 
@@ -9,12 +8,12 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 
-
 from networks.simple import DDPGPolicy, DDPGValueEstimator
 from training.common import RunParams, TrainingInfo, setup_scaler, scale_state, log_on_console, log_on_tensorboard, \
-    close_tensorboard, save_model, save_scaler
+    close_tensorboard, save_model, save_scaler, polyak_average, policy_run, load_model, load_scaler
 
 from training.noise import OUNoise, NormalNoise
+from training.replay_buffer import ReplayBuffer
 
 
 @dataclass
@@ -45,37 +44,6 @@ class DDPGParams:
     test_frequency: int = 10  # How often we test the agent (in number of episodes)
 
 
-def sample_values(values: deque, indices: np.ndarray) -> torch.Tensor:
-    return torch.as_tensor([values[i] for i in indices], dtype=torch.float32)
-
-
-class ReplayBuffer:
-    def __init__(self, max_length):
-        self.states = deque(maxlen=max_length)
-        self.actions = deque(maxlen=max_length)
-        self.rewards = deque(maxlen=max_length)
-        self.new_states = deque(maxlen=max_length)
-        self.dones = deque(maxlen=max_length)
-
-    def store(self, state, action, reward, new_state, done):
-        self.states.append(state)
-        self.actions.append(action)
-        self.rewards.append(reward)
-        self.new_states.append(new_state)
-        self.dones.append(done)
-
-    def sample_batch(self, batch_size: int):
-        num_elements = min(self.states.maxlen, len(self.states))
-        indices = np.random.randint(low=0, high=num_elements, size=batch_size)
-        return {
-            "states": sample_values(self.states, indices),
-            "actions": sample_values(self.actions, indices),
-            "rewards": sample_values(self.rewards, indices),
-            "new_states": sample_values(self.new_states, indices),
-            "dones": sample_values(self.dones, indices),
-        }
-
-
 def compute_policy_loss(batch_transitions, ddpg_params: DDPGParams) -> torch.Tensor:
     # Idea: we want to maximize the values of the actions predicted by the policy
     # We therefore want to do gradient ascent, so we have to negate the loss
@@ -101,7 +69,7 @@ def compute_value_loss(batch_transitions, ddpg_params: DDPGParams, run_params: R
         values_expected = rewards + run_params.gamma * (1 - dones) * values_target
 
     return F.smooth_l1_loss(values, values_expected)
-    #return ((values - values_expected) ** 2).mean()
+    # return ((values - values_expected) ** 2).mean()
 
 
 def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunParams, writer: SummaryWriter,
@@ -132,13 +100,8 @@ def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunPar
         writer.add_scalar("Loss/Value", value_loss.item(), step_number)
 
     # We now need to update the target networks, given the new weights of the normal networks
-    with torch.no_grad():
-        for (normal, target) in [(ddpg_params.policy, ddpg_params.policy_target),
-                                 (ddpg_params.value_estimator, ddpg_params.value_estimator_target)]:
-            for param, param_target in zip(normal.parameters(), target.parameters()):
-                # We use the inplace operators to avoid creating new tensor
-                param_target.data.mul_(ddpg_params.polyak)
-                param_target.data.add_((1 - ddpg_params.polyak) * param.data)
+    polyak_average(ddpg_params.policy, ddpg_params.policy_target, ddpg_params.polyak)
+    polyak_average(ddpg_params.value_estimator, ddpg_params.value_estimator_target, ddpg_params.polyak)
 
 
 def select_action_ddpg(state, ddpg_params: DDPGParams, env: gym.Env, noise_coeff: float) -> np.ndarray:
@@ -214,7 +177,7 @@ def ddpg_train(
             # Note: in the first start_steps steps, we randomly pick actions from
             # the action space (uniformly) to have better exploration.
             if step_number >= ddpg_params.num_random_action_steps:
-                action = select_action_ddpg(state, ddpg_params, env, ddpg_params.noise_coeff * 0.99 ** episode_number)
+                action = select_action_ddpg(state, ddpg_params, env, ddpg_params.noise_coeff * 0.995 ** episode_number)
             else:
                 action = env.action_space.sample()
 
@@ -228,6 +191,7 @@ def ddpg_train(
                     writer.add_scalar(f"Action/{action_index}", a[action_index], value_time_step)
                 writer.add_scalar("Q-values/Normal Network", value, value_time_step)
                 writer.add_scalar("Q-values/Target Network", value_target, value_time_step)
+
                 value_time_step += 1
 
             new_state, reward, done, _ = env.step(action)
@@ -284,26 +248,15 @@ def ddpg_train(
 
 
 def ddpg_run(env, policy, scaler=None, render=True):
-    episode_number = 0
-    episode_rewards = []
-    while True:
-        state, done, episode_reward, episode_length = env.reset(), False, 0, 0
-        while not done:
-            if scaler:
-                state = scale_state(scaler, state)
+    return policy_run(env, policy, scaler, render)
 
-            action = policy.get_actions(torch.tensor(state).float())
-            action = np.clip(action, env.action_space.low, env.action_space.high)
 
-            state, reward, done, _ = env.step(action)
-            if render:
-                env.render()
-            episode_reward += reward
-            episode_length += 1
-        episode_rewards.append(episode_reward)
-
-        print(f"Episode {episode_number}\t"
-              f"Reward: {episode_reward:.3f}\t"
-              f"Number of steps: {episode_length}\t"
-              f"Avg reward: {np.mean(episode_rewards):.3f} +- {np.std(episode_rewards):.3f}")
-        episode_number += 1
+def ddpg_run_from_disk(env, has_scaler=True, render=True):
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
+    ddpg_policy = load_model(
+        DDPGPolicy(state_dim, action_dim, env.action_space.high, env.action_space.low),
+        env, "policy_target.data"
+    )
+    scaler = load_scaler(env, "scaler.data") if has_scaler else None
+    ddpg_run(env, ddpg_policy, scaler=scaler, render=render)

@@ -1,0 +1,12 @@
+Ideas inspired from the paper "Counterfactual States for Atari Agents via Generative Deep Learning":
+
+1) "The main role of deep learning in these (ATARI) environments is to learn a low dimensional
+representation of the state to help with policy learning." In Beta-VAE, the botteneck has disentagled
+factors. If we could combine these two ideas, we might be able to interpret the output of the deep
+neural networks by looking at the disentangled representations!
+
+In other words, combining deep learning this with a Beta-VAE might lead to having an interpretable
+disentangled learned representations!
+
+2) "As such, we do not focus on explaining the long term, sequential decision making effects of following a learned
+    policy, though this is a direction of interest for future work"

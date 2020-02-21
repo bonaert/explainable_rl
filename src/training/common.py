@@ -267,6 +267,36 @@ def run_model(
     return episode_reward, episode_length
 
 
+def policy_run(env, policy, scaler=None, render=True, say_deterministic=False):
+    with torch.no_grad():
+        episode_number = 0
+        episode_rewards = []
+        while True:
+            state, done, episode_reward, episode_length = env.reset(), False, 0, 0
+            while not done:
+                if scaler:
+                    state = scale_state(scaler, state)
+
+                if say_deterministic:
+                    action = policy.get_actions(torch.tensor(state).float(), deterministic=True)
+                else:
+                    action = policy.get_actions(torch.tensor(state).float())
+                action = np.clip(action, env.action_space.low, env.action_space.high)
+
+                state, reward, done, _ = env.step(action)
+                if render:
+                    env.render()
+                episode_reward += reward
+                episode_length += 1
+            episode_rewards.append(episode_reward)
+
+            print(f"Episode {episode_number}\t"
+                  f"Reward: {episode_reward:.3f}\t"
+                  f"Number of steps: {episode_length}\t"
+                  f"Avg reward: {np.mean(episode_rewards):.3f} +- {np.std(episode_rewards):.3f}")
+            episode_number += 1
+
+
 def log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer):
     if run_params.use_tensorboard:
         if run_params.env_can_be_solved:
@@ -296,3 +326,11 @@ def close_tensorboard(run_params, writer):
     if run_params.use_tensorboard:
         writer.flush()
         writer.close()
+
+
+def polyak_average(source_network, target_network, polyak_coeff: float):
+    with torch.no_grad():
+        for param, param_target in zip(source_network.parameters(), target_network.parameters()):
+            # We use the inplace operators to avoid creating new tensor
+            param_target.data.mul_(polyak_coeff)
+            param_target.data.add_((1 - polyak_coeff) * param.data)

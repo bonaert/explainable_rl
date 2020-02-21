@@ -1,11 +1,12 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions import Normal
 from torch.nn.parameter import Parameter
-from torch.nn.init import xavier_uniform_
+from torch.nn.init import xavier_uniform_, uniform_
 
 
 class SimplePolicyDiscrete(nn.Module):
@@ -165,11 +166,18 @@ class SimpleCritic2(nn.Module):
 # Source: https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/ddpg/core.py
 
 
-def make_network(layer_sizes, activation, output_activation=nn.Identity):
+def make_network(layer_sizes, activation, output_activation=nn.Identity,
+                 initialize_last_linear: bool = False) -> nn.Sequential:
     layers = []
     for i in range(len(layer_sizes) - 1):
         size_before, size_after = layer_sizes[i], layer_sizes[i + 1]
-        layers.append(nn.Linear(size_before, size_after))
+        linear_layer = nn.Linear(size_before, size_after)
+        layers.append(linear_layer)
+
+        if i == len(layer_sizes) - 2 and initialize_last_linear:
+            uniform_(linear_layer.weight.data, -0.003, 0.003)
+            uniform_(linear_layer.bias.data, -0.003, 0.003)
+
         layers.append(activation() if i < len(layer_sizes) - 2 else output_activation())
     return nn.Sequential(*layers)
 
@@ -177,7 +185,7 @@ def make_network(layer_sizes, activation, output_activation=nn.Identity):
 class DDPGPolicy(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, action_high: np.ndarray, action_low: np.ndarray):
         super().__init__()
-        self.layers = make_network([state_dim, 256, 256, action_dim], nn.ReLU, nn.Tanh)
+        self.layers = make_network([state_dim, 256, 256, action_dim], nn.ReLU, nn.Tanh, initialize_last_linear=True)
         self.action_high = torch.tensor(action_high)
         self.action_low = torch.tensor(action_low)
 
@@ -196,11 +204,89 @@ class DDPGPolicy(nn.Module):
 class DDPGValueEstimator(nn.Module):
     def __init__(self, state_dim: int, action_dim: int):
         super().__init__()
+        self.layers = make_network([state_dim + action_dim, 256, 256, 1], nn.ReLU, initialize_last_linear=True)
+
+    def forward(self, states, actions) -> torch.Tensor:
+        """ Returns the actions as a torch Tensor (gradients can be computed)"""
+        # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
+        full_input = torch.cat([states, actions], dim=-1)
+        return self.layers.forward(full_input).squeeze(-1)
+
+
+# Sigma must be in (e^-20, e^2) = (2e-9, 7.38)
+LOG_SIGMA_MIN = -20
+LOG_SIGMA_MAX = 2
+
+
+class SacPolicy(nn.Module):
+    """
+    Design decisions:
+    1) Sample actions from a Normal distribution. This has 2 advantages:
+        - We can compute the entropy of our policy, which is required in the SAC algorithm
+        - We get automatic noise (because we sample from a distribution). If needed, we can however still
+          get deterministic actions by just returning mu. This is useful at test time (pure exploitation)
+    2) The mean and std of the standard distribution are obtained through neural networks.
+       Both networks take the state as input. According to Spinning up, if sigma didn't depend on the
+       state, SAC wouldn't work. They challenge us to figure out why and to test this claim empirically.
+    """
+
+    def __init__(self, state_dim: int, action_dim: int, action_high: np.ndarray, action_low: np.ndarray):
+        super().__init__()
+        self.layers = make_network([state_dim, 256, 256], nn.ReLU, nn.ReLU)
+        self.mu_layer = nn.Linear(256, action_dim)
+        self.sigma_layer = nn.Linear(256, action_dim)
+
+        self.action_high = torch.tensor(action_high)
+        self.action_low = torch.tensor(action_low)
+
+    def forward(self, states, deterministic=False, compute_log_prob=True) -> Tuple[torch.Tensor, torch.Tensor]:
+        """ Returns the actions and their log probs as a torch Tensors (gradients can be computed)"""
+        hidden_state = self.layers.forward(states)
+        mu = self.mu_layer(hidden_state)
+        log_std = self.sigma_layer(hidden_state)
+        log_std = LOG_SIGMA_MIN + 0.5 * (LOG_SIGMA_MAX - LOG_SIGMA_MIN) * (torch.tanh(log_std) + 1)
+        # log_std = torch.clamp(log_std, LOG_SIGMA_MIN, LOG_SIGMA_MAX)
+        std = torch.exp(log_std)
+
+        policy_distribution = Normal(mu, std)
+        actions = mu if deterministic else policy_distribution.rsample()
+
+        if compute_log_prob:
+            # Exact source: https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/sac/core.py#L54
+            # "Compute logprob from Gaussian, and then apply correction for Tanh squashing.
+            # NOTE: The correction formula is a little bit magic. To get an understanding
+            # of where it comes from, check out the original SAC paper (arXiv 1801.01290)
+            # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
+            # Try deriving it yourself as a (very difficult) exercise. :)"
+            log_prob = policy_distribution.log_prob(actions).sum(axis=-1)
+            try:
+                log_prob -= (2 * (np.log(2) - actions - F.softplus(-2 * actions))).sum(axis=1)
+            except IndexError:
+                log_prob -= (2 * (np.log(2) - actions - F.softplus(-2 * actions))).sum()
+        else:
+            log_prob = None
+
+        actions = torch.tanh(actions)
+        actions = actions * (self.action_high - self.action_low) / 2 + (self.action_high + self.action_low) / 2
+        return actions, log_prob
+
+    def get_actions(self, state, deterministic=False, compute_log_prob=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """ Returns the actions as a Numpy array (no gradients will be computed) """
+        with torch.no_grad():
+            actions, log_prob = self.forward(state, deterministic, compute_log_prob)
+            if compute_log_prob:
+                return actions.numpy(), log_prob.numpy()
+            else:
+                return actions.numpy()
+
+
+class SacValueEstimator(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int):
+        super().__init__()
         self.layers = make_network([state_dim + action_dim, 256, 256, 1], nn.ReLU)
 
     def forward(self, states, actions) -> torch.Tensor:
         """ Returns the actions as a torch Tensor (gradients can be computed)"""
         # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
         full_input = torch.cat([states, actions], dim=-1)
-        value = self.layers.forward(full_input).squeeze(-1)
-        return 0.5 * value
+        return self.layers.forward(full_input).squeeze(-1)
