@@ -275,11 +275,11 @@ def save_model_sac(env, sac_params, scaler):
         save_scaler(scaler, env, "scaler.data")
 
 
-def sac_run(env, policy, scaler=None, render=True):
-    return policy_run(env, policy, scaler, render, say_deterministic=False)
+def sac_run(env, policy, scaler=None, render=True, run_once=False):
+    return policy_run(env, policy, scaler, render, say_deterministic=False, run_once=run_once)
 
 
-def sac_run_from_disk(env, has_scaler=True, render=True):
+def sac_run_from_disk(env, has_scaler=True, render=True, run_once=False):
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     ddpg_policy = load_model(
@@ -287,4 +287,4 @@ def sac_run_from_disk(env, has_scaler=True, render=True):
         env, "policy_target.data"
     )
     scaler = load_scaler(env, "scaler.data") if has_scaler else None
-    sac_run(env, ddpg_policy, scaler=scaler, render=render)
+    sac_run(env, ddpg_policy, scaler=scaler, render=render, run_once=run_once)

@@ -247,8 +247,8 @@ def ddpg_train(
     close_tensorboard(run_params, writer)
 
 
-def ddpg_run(env, policy, scaler=None, render=True):
-    return policy_run(env, policy, scaler, render)
+def ddpg_run(env, policy, scaler=None, render=True, run_once=False):
+    return policy_run(env, policy, scaler, render, run_once)
 
 
 def ddpg_run_from_disk(env, has_scaler=True, render=True):

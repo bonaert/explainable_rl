@@ -267,7 +267,7 @@ def run_model(
     return episode_reward, episode_length
 
 
-def policy_run(env, policy, scaler=None, render=True, say_deterministic=False):
+def policy_run(env, policy, scaler=None, render=True, say_deterministic=False, run_once=False):
     with torch.no_grad():
         episode_number = 0
         episode_rewards = []
@@ -295,6 +295,9 @@ def policy_run(env, policy, scaler=None, render=True, say_deterministic=False):
                   f"Number of steps: {episode_length}\t"
                   f"Avg reward: {np.mean(episode_rewards):.3f} +- {np.std(episode_rewards):.3f}")
             episode_number += 1
+
+            if run_once:
+                return
 
 
 def log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer):
