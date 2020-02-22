@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     run_params = RunParams(continuous_actions=True,
                            should_scale_states=True,
-                           render_frequency=10,
+                           render_frequency=100,
                            entropy_coeff=0,
                            entropy_decay=1,
                            gamma=0.99,
@@ -32,7 +32,7 @@ if __name__ == "__main__":
                            env_can_be_solved=True,
                            save_model_frequency=10,
                            stop_at_threshold=False,
-                           maximum_episodes=100)
+                           maximum_episodes=2000)
 
     if False:
         optimizer = torch.optim.Adam(params=list(simple_policy.parameters()) + list(simple_critic.parameters()),
@@ -81,7 +81,7 @@ if __name__ == "__main__":
             batch_size=128,
             polyak=0.9,
             noise_coeff=1,
-            noise_source=OUNoise(action_dim),  # This noise is super important! Without it we can solve it. It feels
+            noise_source=OUNoise(action_dim, decay=0.98),  # This noise is super important! Without it we can solve it. It feels
                                                # a bit like cheating though, because it might simply be overfitting to
                                                # the problem. It's able to solve mountain car though
             num_random_action_steps=0,
@@ -106,13 +106,13 @@ if __name__ == "__main__":
             value_optimizer=Adam(value_parameters, lr=1e-3),
             replay_buffer_size=1000000,
             update_frequency=50,
-            update_start=1000,
+            update_start=5000,
             batch_size=100,
             polyak=0.995,
-            num_random_action_steps=10000,
-            alpha=1,
+            num_random_action_steps=5000,
+            alpha=10,
             num_test_episodes=10,
-            test_frequency=20
+            test_frequency=50
         )
         sac_train(env, run_params, sac_params)
 

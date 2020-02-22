@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
     run_params = RunParams(continuous_actions=True,
                            should_scale_states=True,
-                           render_frequency=10,
+                           render_frequency=100,
                            entropy_coeff=0,
                            entropy_decay=1,
                            gamma=0.99,
