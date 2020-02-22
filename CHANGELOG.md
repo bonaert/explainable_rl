@@ -19,7 +19,7 @@
     - During training, to better understand the actions the agent is doing, the 
     environment can be rendered every X episodes
     
-![Solved Bipedal Walker Hardcode](/videos/android_vid_test.gif)
+![Solved Bipedal Walker Hardcode](https://github.com/bonaert/explainable_rl/blob/master/videos/solved_bipedal_walker_hardcore_sac.gif?raw=true)
 
 12 February
 -----------

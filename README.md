@@ -23,7 +23,7 @@ of the current status of the thesis:
 - Implemented the Watershed environment (a custom OpenAI Gym compatible environment). It's
   originally a classical optimization problem but RL will be applied to solve it
 
-![Solved Bipedal Walker Hardcode](/videos/android_vid_test.gif)
+![Solved Bipedal Walker Hardcode](https://github.com/bonaert/explainable_rl/blob/master/videos/solved_bipedal_walker_hardcore_sac.gif?raw=true)
 
 
 ## Background
