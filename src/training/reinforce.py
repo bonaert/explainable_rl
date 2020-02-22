@@ -12,13 +12,18 @@ from src.training.common import select_action_continuous, select_action_discrete
 
 
 def train_policy(optimizer: Optimizer, training_info: TrainingInfo, run_params: RunParams):
+    """ Trains the policy using the policy gradient method, given the discounted rewards of the latest episode
+    Entropy is also taken into account. Each new episode diminishes its importance by run_params.entropy_decay,
+    such that the agent will explore at the beginning and tend to explore less and less over time. The agent is
+    trained once on all the transitions of the episode (instead of training many times over mini-batches).
+    """
     training_info.compute_discounted_rewards()
 
     # Compute the loss of the policy at each time step
     policy_losses = []
     for log_prob, discounted_reward, entropy in zip(training_info.log_probs, training_info.discounted_rewards, training_info.entropies):
         entropy_coeff = run_params.entropy_coeff * run_params.entropy_decay ** training_info.episode_number
-        policy_losses.append(-(log_prob + 0.005 * 0.99 ** training_info.episode_number  * entropy) * discounted_reward)
+        policy_losses.append(-(log_prob + entropy_coeff * entropy) * discounted_reward)
 
     # Optimize the policy
     optimizer.zero_grad()
@@ -32,6 +37,11 @@ def train_policy(optimizer: Optimizer, training_info: TrainingInfo, run_params: 
 
 def train_policy_batches(policy: SimplePolicyContinuous, optimizer: Optimizer,
                          training_info: TrainingInfo, run_params: RunParams):
+    """ Trains the policy using the policy gradient method, given the discounted rewards of the latest episode
+    Entropy is also taken into account. Each new episode diminishes its importance by run_params.entropy_decay,
+    such that the agent will explore at the beginning and tend to explore less and less over time. The agent is
+    trained many times over mini-batches of transitions of the episode (instead of being trained once on all
+    transitions)"""
     training_info.compute_discounted_rewards()
 
     for (states, actions, discounted_rewards) in training_info.get_batches(run_params.batch_size):
@@ -42,6 +52,9 @@ def train_policy_batches(policy: SimplePolicyContinuous, optimizer: Optimizer,
 
 def train_batch(policy: SimplePolicyContinuous, states: List[torch.Tensor], actions: List[torch.Tensor],
                 discounted_rewards: List[torch.Tensor], optimizer: Optimizer, episode_number: int, run_params: RunParams):
+    """ Trains the policy using the policy gradient method using a single mini-batch of transitions.
+    Entropy is also taken into account. Each new episode diminishes its importance by run_params.entropy_decay,
+    such that the agent will explore at the beginning and tend to explore less and less over time"""
     optimizer.zero_grad()
 
     policy_losses = []
@@ -66,7 +79,14 @@ def reinforceTraining(
         env: gym.Env,
         optimizer: Optimizer,
         run_params: RunParams):
-
+    """ Trains the policy using the REINFORCE algorithm. Training is done at the end of each episode, and can
+    be done either using all transitions at once, or over many training iterations over mini-batches of transitions.
+    Both discrete and continuous actions spaces are supported. Several features can be optionally enabled:
+    1) Scaling / normalizing the states / observations
+    2) Logging training statistics on Tensorboard
+    3) Render the environment periodically (pick render_frequency in the RunParams)
+    4) Save the policy (and optionally the observation / state scaler) periodically (see RunParams.save_model_frequency)
+    """
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 

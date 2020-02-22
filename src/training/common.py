@@ -312,7 +312,7 @@ def run_general_policy(
 
 
 def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocessing.StandardScaler = None,
-               render=True, say_deterministic=False, run_once=False):
+               render=True, specify_deterministic_policy=False, run_once=False):
     """ Runs the policy on the environment, doing an infinite amount of episodes. The action space must be continuous.
         If needed, the states / observations can be scaled and the environment can be rendered at each step. Some
         logging is done on the console, to understand the behavior and results of the policy.
@@ -326,7 +326,7 @@ def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocess
                 if scaler:
                     state = scale_state(scaler, state)
 
-                if say_deterministic:
+                if specify_deterministic_policy:
                     action = policy.get_actions(torch.tensor(state).float(), deterministic=True)
                 else:
                     action = policy.get_actions(torch.tensor(state).float())

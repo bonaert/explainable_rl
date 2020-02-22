@@ -14,6 +14,12 @@ from training.common import log_on_tensorboard, log_on_console
 
 
 def train_policy_on_episode(optimizer: Optimizer, training_info: TrainingInfo, episode_number: int):
+    """ Trains both the actor and the critic using all transitions of the latest episode. The actor's loss is the MSE
+     between V(state) and reward + gamma * V(next state), where V indicates the actor's value function.
+     The actor / policy is trained by maximizing the log probability * td-error, and an entropy term is
+     added to encourage exploration. The entropy is decayed at new each episode by the run_params.entropy_decay
+     coefficient.
+    """
     training_info.compute_discounted_rewards()
 
     # Compute the loss of the policy and the critic at each time step
@@ -49,6 +55,12 @@ def train_policy_on_step(
         entropy: float,
         episode_number: int,
         run_params: RunParams):
+    """ Trains both the actor and the critic using the given transition. The actor's loss is the MSE
+     between V(state) and reward + gamma * V(next state), where V indicates the actor's value function.
+     The actor / policy is trained by maximizing the log probability * td-error, and an entropy term is
+     added to encourage exploration. The entropy is decayed at new each episode by the run_params.entropy_decay
+     coefficient.
+     """
     # Inspired from https://gym.openai.com/evaluations/eval_gUhDnmlbTKG1qW0jS6HSg/
 
     state, next_state = prepare_state(state), prepare_state(next_state)
@@ -58,10 +70,9 @@ def train_policy_on_step(
     td_error = state_value_target - state_value_prediction
 
     # Update policy
-    # loss = -(log_prob + 0.99 ** episode_number * entropy) * td_error
     optimizer.zero_grad()
-    loss = -(log_prob + run_params.entropy_coeff * run_params.entropy_decay ** episode_number * entropy) * td_error + \
-           F.mse_loss(state_value_prediction, state_value_target)
+    loss = -(log_prob + run_params.entropy_coeff * run_params.entropy_decay ** episode_number * entropy) * td_error
+    loss += F.mse_loss(state_value_prediction, state_value_target)
     loss.backward()
     optimizer.step()
 
@@ -73,6 +84,14 @@ def actor_critic_train_per_episode(
         optimizer: Optimizer,
         run_params: RunParams,
         lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None):
+    """ Trains the actor critic on the given environment. Training is done at the end of each episode, instead
+    of at the end of each step of an episode. This means the agent trains much more frequently.
+    Both discrete and continuous actions spaces are supported. Several features can be optionally enabled:
+    1) Scaling / normalizing the states / observations
+    2) Logging training statistics on Tensorboard
+    3) Render the environment periodically (pick render_frequency in the RunParams)
+    4) Using a learning rate scheduler
+    """
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")
 
@@ -135,9 +154,13 @@ def actor_critic_train_per_step(
         optimizer: Optimizer,
         run_params: RunParams,
         lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None):
-    """
-    https://medium.com/@asteinbach/actor-critic-using-deep-rl-continuous-mountain-car-in-tensorflow-4c1fb2110f7c
-    says it's crucial to scale the state
+    """ Trains the actor critic on the given environment. Training is done at the end of each step, instead of
+    at the end of each episode. This means the agent trains less frequently than doing it at each step.
+    Both discrete and continuous actions spaces are supported. Several features can be optionally enabled:
+    1) Scaling / normalizing the states / observations
+    2) Logging training statistics on Tensorboard
+    3) Render the environment periodically (pick render_frequency in the RunParams)
+    4) Using a learning rate scheduler
     """
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     print(f"The goal is a running reward of at least {env.spec.reward_threshold}.")

@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Union, Dict
 
 import gym
 import numpy as np
 import torch
+import sklearn.preprocessing
 from torch.optim.optimizer import Optimizer
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
@@ -18,6 +19,8 @@ from training.replay_buffer import ReplayBuffer
 
 @dataclass
 class DDPGParams:
+    """ Networks and parameters that are specific to running the DDPG algorithm. Most parts of the training
+    procedure are tweakable, as well as random exploration at the beginning and testing frequency """
     policy: DDPGPolicy
     policy_target: DDPGPolicy
     value_estimator: DDPGValueEstimator
@@ -26,16 +29,16 @@ class DDPGParams:
     policy_optimizer: Optimizer
     value_optimizer: Optimizer
 
-    replay_buffer_size: int
+    replay_buffer_size: int  # Maximum size of the replay buffer
+    batch_size: int  # Size of the batches of transitions that are sampled from the replay buffer to train the agent
 
-    update_frequency: int
-    update_start: int
-    batch_size: int
+    update_frequency: int  # How frequently (in terms of steps) should the policy / value estimator be updated
+    update_start: int  # After how many steps should the policy / value estimator start to be updated
 
     polyak: float  # Polyak coefficient, indicating how much of target is changed
 
     noise_coeff: float  # We add noise_coeff * normal() noise to the actions
-    noise_source: Union[OUNoise, NormalNoise]  # Source of noise
+    noise_source: Union[OUNoise, NormalNoise]  # Source of noise that is added to the actions
 
     num_random_action_steps: int  # During the first start_steps steps, we pick random actions
 
@@ -44,20 +47,24 @@ class DDPGParams:
     test_frequency: int = 10  # How often we test the agent (in number of episodes)
 
 
-def compute_policy_loss(batch_transitions, ddpg_params: DDPGParams) -> torch.Tensor:
-    # Idea: we want to maximize the values of the actions predicted by the policy
-    # We therefore want to do gradient ascent, so we have to negate the loss
+def compute_policy_loss(batch_transitions: Dict[str, torch.Tensor], ddpg_params: DDPGParams) -> torch.Tensor:
+    """ Since the goal is to maximize the values of the actions predicted by the policy, the value loss is defined
+    as -(mean of the Q(state, action predicted by policy)). Since we want to do gradient ascent but Pytorch does
+    gradient descent, we need to add that minus sign. """
     states = batch_transitions["states"]
     actions = ddpg_params.policy.forward(states)
     values = ddpg_params.value_estimator.forward(states, actions)
     return -values.mean()
 
 
-def compute_value_loss(batch_transitions, ddpg_params: DDPGParams, run_params: RunParams):
-    # Idea: we compute
-    # 1) the current values predicted by the value estimator
-    # 2) the values we'd should have, using the target value estimator and the target policy
-    # The loss is given by the MSE between (1) and (2)
+def compute_value_loss(batch_transitions: Dict[str, torch.Tensor], ddpg_params: DDPGParams, run_params: RunParams):
+    """ Computes the value loss for both value estimators and return the summed losses. For each transition
+    in the mini-batch, we compute which action a' the current policy would take at the next state s'. This information
+    is used in the update rule. In DDPG, the error for a specific transition is defined as:
+        Q(s, a) - (reward + (1 - done) * gamma * Q(s', a'))
+    In this implementation, the loss for a specific network is defined as the smooth L1 loss over all transitions
+    in the mini-batch (instead of the more conventional MSE)."""
+    # TODO: justify why L1 instead of MSE, and see if it actually matters or not
     states, actions, rewards = batch_transitions["states"], batch_transitions["actions"], batch_transitions["rewards"]
     new_states, dones = batch_transitions["new_states"], batch_transitions["dones"]
 
@@ -69,11 +76,13 @@ def compute_value_loss(batch_transitions, ddpg_params: DDPGParams, run_params: R
         values_expected = rewards + run_params.gamma * (1 - dones) * values_target
 
     return F.smooth_l1_loss(values, values_expected)
-    # return ((values - values_expected) ** 2).mean()
 
 
-def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunParams, writer: SummaryWriter,
-                  step_number):
+def update_models(batch_transitions: Dict[str, torch.Tensor], ddpg_params: DDPGParams, run_params: RunParams,
+                  writer: SummaryWriter, step_number: int):
+    """ Updates both the policy and the 2 value networks, and then polyak-updates the corresponding target
+    networks. Polyak updating means slightly change the weights of the target network to take into account the
+    new weights of the main networks. See polyak_average() for details. """
     # Update the value function
     ddpg_params.value_optimizer.zero_grad()
     value_loss = compute_value_loss(batch_transitions, ddpg_params, run_params)
@@ -105,6 +114,8 @@ def update_models(batch_transitions, ddpg_params: DDPGParams, run_params: RunPar
 
 
 def select_action_ddpg(state, ddpg_params: DDPGParams, env: gym.Env, noise_coeff: float) -> np.ndarray:
+    """ Select an action using the DDPG policy and then noise is added to it. The noisy action will always be
+    contained within the action space. """
     action = ddpg_params.policy.get_actions(torch.tensor(state).float())
     action += noise_coeff * ddpg_params.noise_source.sample()  # Gaussian noise
     action = np.clip(action, env.action_space.low, env.action_space.high)  # Clamp the action inside the action space
@@ -112,7 +123,9 @@ def select_action_ddpg(state, ddpg_params: DDPGParams, env: gym.Env, noise_coeff
 
 
 def test_agent_performance(env: gym.Env, ddpg_params: DDPGParams, run_params: RunParams, writer: SummaryWriter,
-                           test_episode_number: int, scaler):
+                           test_episode_number: int, scaler: sklearn.preprocessing.StandardScaler):
+    """ Tests the agent's performance by running the policy during a certain amount of episodes. The
+        average episode reward and episode length are logged on the console and optionally on Tensorboard"""
     episode_rewards, episode_lengths = [], []
     for j in range(ddpg_params.num_test_episodes):
         state, done, episode_reward, episode_length = env.reset(), False, 0, 0
@@ -219,11 +232,7 @@ def ddpg_train(env: gym.Env, run_params: RunParams, ddpg_params: DDPGParams):
             test_episode_num += 1
 
         if run_params.should_save_model(episode_number):
-            save_model(ddpg_params.policy_target, env, "policy_target.data")
-            save_model(ddpg_params.value_estimator_target, env, "value_estimator_target.data")
-
-            if scaler is not None:
-                save_scaler(scaler, env, "scaler.data")
+            save_model_ddpg(ddpg_params, env, scaler)
 
         training_info.update_running_reward()
 
@@ -243,11 +252,25 @@ def ddpg_train(env: gym.Env, run_params: RunParams, ddpg_params: DDPGParams):
     close_tensorboard(run_params, writer)
 
 
+def save_model_ddpg(ddpg_params, env, scaler):
+    """ Saves the DDPG model (and optionally the scaler, if it's not None) to disk in the data directory"""
+    save_model(ddpg_params.policy_target, env, "policy_target.data")
+    save_model(ddpg_params.value_estimator_target, env, "value_estimator_target.data")
+    if scaler is not None:
+        save_scaler(scaler, env, "scaler.data")
+
+
 def ddpg_run(env, policy, scaler=None, render=True, run_once=False):
+    """ Run the given DDPG-trained policy (using optionally a observation / state scaler) on the environment
+    indefinitely (by default) or over a single episode (if desired). By default the environment is rendered,
+    but this can be disabled. """
     return policy_run(env, policy, scaler, render, run_once)
 
 
 def ddpg_run_from_disk(env, has_scaler=True, render=True):
+    """ Loads a DDPG-trained policy (and optionally a observation / state scaler) and then runs them
+    on the environment indefinitely (by default) or over a single episode (if desired).
+    By default the environment is rendered, but this can be disabled. """
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     ddpg_policy = load_model(

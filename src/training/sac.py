@@ -20,6 +20,8 @@ from training.replay_buffer import ReplayBuffer
 
 @dataclass
 class SacParams:
+    """ Networks and parameters that are specific to running the SAC algorithm. Most parts of the training
+    procedure are tweakable, as well as random exploration at the beginning and testing frequency """
     policy: SacPolicy
     policy_target: SacPolicy
     value_estimator1: SacValueEstimator
@@ -30,24 +32,42 @@ class SacParams:
     policy_optimizer: Optimizer
     value_optimizer: Optimizer
 
-    replay_buffer_size: int
+    replay_buffer_size: int  # Maximum size of the replay buffer
+    batch_size: int  # Size of the batches of transitions that are sampled from the replay buffer to train the agent
 
-    update_frequency: int
-    update_start: int
-    batch_size: int
+    alpha: float  # Entropy coefficient in the Bellman equation
 
     polyak: float  # Polyak coefficient, indicating how much of target is changed
 
     num_random_action_steps: int  # During the first start_steps steps, we pick random actions
 
     num_test_episodes: int  # Number of episodes used to evaluate the agent
-
-    alpha: float  # Entropy coefficient in the Bellman equation
-
     test_frequency: int = 10  # How often we test the agent (in number of episodes)
 
 
+def compute_policy_loss(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams) -> torch.Tensor:
+    """ Since the goal is to maximize the values of the actions predicted by the policy, the value loss is defined
+    as -(mean of the minQ(state, action predicted by policy)). In SAC, we use the double-Q trick, meaning we
+    evaluate the Q-value by running both value estimators networks and then taking the minimum of the actions.
+    Since we want to do gradient ascent but Pytorch does gradient descent, we need to add that minus sign.
+    """
+    states = batch_transitions["states"]
+    actions, log_actions = sac_params.policy.forward(states)
+    values1 = sac_params.value_estimator1.forward(states, actions)
+    values2 = sac_params.value_estimator2.forward(states, actions)
+    values = torch.min(values1, values2)
+
+    return (sac_params.alpha * log_actions - values).mean()
+
+
 def compute_value_loss(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams, run_params: RunParams):
+    """ Computes the value loss for both value estimators and return the summed losses. For each transition
+    in the mini-batch, we compute which action a' the current policy would take at the next state s'. This information
+    is used in the update rule.
+    In SAC, we take into account the log probability of the actions, so error for a specific transition is defined as:
+        Q(s, a) - (reward + (1 - done) * gamma * (Q(s', a') - alpha * log_prob(a')))
+    The loss for a specific network is defined as the MSE over all transitions in the mini-batch.
+    """
     states, actions, rewards = batch_transitions["states"], batch_transitions["actions"], batch_transitions["rewards"]
     new_states, dones = batch_transitions["new_states"], batch_transitions["dones"]
 
@@ -70,21 +90,11 @@ def compute_value_loss(batch_transitions: Dict[str, torch.Tensor], sac_params: S
     return value1_loss + value2_loss
 
 
-def compute_policy_loss(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams) -> torch.Tensor:
-    # Idea: we want to maximize the values of the actions predicted by the policy
-    # and to minimize the log likelihood of the actions (policy gradient)
-    # We therefore want to do gradient ascent, so we have to negate the loss
-    states = batch_transitions["states"]
-    actions, log_actions = sac_params.policy.forward(states)
-    values1 = sac_params.value_estimator1.forward(states, actions)
-    values2 = sac_params.value_estimator2.forward(states, actions)
-    values = torch.min(values1, values2)
-
-    return (sac_params.alpha * log_actions - values).mean()
-
-
 def update_models(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams, run_params: RunParams,
                   writer: SummaryWriter, step_number: int):
+    """ Updates both the policy and the 2 value networks, and then polyak-updates the corresponding target
+    networks. Polyak updating means slightly change the weights of the target network to take into account the
+    new weights of the main networks. See polyak_average() for details. """
     # Update the value function
     sac_params.value_optimizer.zero_grad()
     value_loss = compute_value_loss(batch_transitions, sac_params, run_params)
@@ -120,11 +130,16 @@ def update_models(batch_transitions: Dict[str, torch.Tensor], sac_params: SacPar
 
 def select_action_sac(state: np.ndarray, sac_params: SacParams,
                       deterministic=False, compute_log_prob=False) -> np.ndarray:
+    """ Select an action using the SAC policy. The log probability of the action can optionally be computed.
+    By default, an action is sampled from the Normal distribution outputted by the SAC policy, but for
+    testing and determinism, the mean of the distribution cen be returns instead. """
     return sac_params.policy.get_actions(torch.tensor(state).float(), deterministic, compute_log_prob)
 
 
 def test_agent_performance(env: gym.Env, sac_params: SacParams, run_params: RunParams, writer: SummaryWriter,
                            test_episode_number: int, scaler: sklearn.preprocessing.StandardScaler):
+    """ Tests the agent's performance by running the policy during a certain amount of episodes. The
+    average episode reward and episode length are logged on the console and optionally on Tensorboard"""
     with torch.no_grad():
         episode_rewards, episode_lengths = [], []
         for j in range(sac_params.num_test_episodes):
@@ -139,8 +154,8 @@ def test_agent_performance(env: gym.Env, sac_params: SacParams, run_params: RunP
             episode_rewards.append(episode_reward)
             episode_lengths.append(episode_length)
 
-        print(f"\tAverage test performance: {np.mean(episode_rewards):.3f}"
-              f"\tAverage Episode Steps {np.mean(episode_lengths):.3f}")
+        print(f"\tAverage total episode reward: {np.mean(episode_rewards):.3f}"
+              f"\tAverage episode length: {np.mean(episode_lengths):.3f}")
 
         if run_params.use_tensorboard:
             writer.add_scalar("Test Performance/Average Performance", np.mean(episode_rewards), test_episode_number)
@@ -151,10 +166,14 @@ def sac_train(
         env: gym.Env,
         run_params: RunParams,
         sac_params: SacParams):
-    """
-    :param env: the OpenAI gym environment
-    :param run_params: the general training parameters shared by all training algorithm
-    :param sac_params: the DDPG-specific information (networks, optimizers, parameters)
+    """ Trains the soft actor critic (SAC) on the given environment. Training is done at the end of each episode.
+    Only continuous actions spaces are supported. Several features can be optionally enabled:
+    1) Scaling / normalizing the states / observations
+    2) Logging training statistics on Tensorboard
+    3) Render the environment periodically (pick render_frequency in the RunParams)
+    4) Testing the agent's performance periodically
+    5) Saving the policy and value estimators to disk periodically
+    6) During the first X steps, do random actions (see RunParams.num_random_action_steps)
     """
     assert run_params.continuous_actions, "SAC implementation only implemented for continuous action spaces"
 
@@ -174,10 +193,7 @@ def sac_train(
     replay_buffer = ReplayBuffer(sac_params.replay_buffer_size)
 
     step_number, test_episode_num = 0, 0
-    # TODO: see if this change matters (I think it will, because if the robot has been advancing for a
-    # it's possible that it won't crash before the 1000th step, and so the reward will be much better)
-    # Thus, it will be incentivized to advance much longer
-    max_episode_steps = min(env.spec.max_episode_steps, 10000)
+    max_episode_steps = env.spec.max_episode_steps
 
     for episode_number in range(run_params.maximum_episodes):
         state = env.reset()
@@ -231,11 +247,6 @@ def sac_train(
             if done:
                 break
 
-            # if step_number >= sac_params.update_start and step_number % sac_params.update_frequency == 0:
-            #     for update_step in range(sac_params.update_frequency):
-            #         batch_transitions = replay_buffer.sample_batch(sac_params.batch_size)
-            #         update_models(batch_transitions, sac_params, run_params, writer, step_number)
-
             step_number += 1
             episode_length += 1
 
@@ -270,7 +281,8 @@ def sac_train(
     close_tensorboard(run_params, writer)
 
 
-def save_model_sac(env: gym.Env, sac_params: SacParams, scaler: sklearn.preprocessing.StandardScaler):
+def save_model_sac(env: gym.Env, sac_params: SacParams, scaler: sklearn.preprocessing.StandardScaler = None):
+    """ Saves the SAC model (and optionally the scaler, if it's not None) to disk in the data directory"""
     save_model(sac_params.policy_target, env, "policy_target.data")
     save_model(sac_params.value_estimator1_target, env, "value_estimator1_target.data")
     save_model(sac_params.value_estimator2_target, env, "value_estimator2_target.data")
@@ -280,10 +292,16 @@ def save_model_sac(env: gym.Env, sac_params: SacParams, scaler: sklearn.preproce
 
 def sac_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocessing.StandardScaler = None,
             render=True, run_once=False):
-    return policy_run(env, policy, scaler, render, say_deterministic=False, run_once=run_once)
+    """ Run the given SAC-trained policy (using optionally a observation / state scaler) on the environment
+    indefinitely (by default) or over a single episode (if desired). By default the environment is rendered,
+    but this can be disabled. """
+    return policy_run(env, policy, scaler, render, specify_deterministic_policy=False, run_once=run_once)
 
 
 def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False):
+    """ Loads a SAC-trained policy (and optionally a observation / state scaler) and then runs them
+    on the environment indefinitely (by default) or over a single episode (if desired).
+    By default the environment is rendered, but this can be disabled. """
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     ddpg_policy = load_model(
