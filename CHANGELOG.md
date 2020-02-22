@@ -18,6 +18,8 @@
     - Log training statistics and information on Tensorboard
     - During training, to better understand the actions the agent is doing, the 
     environment can be rendered every X episodes
+    
+![Solved Bipedal Walker Hardcode](/videos/android_vid_test.gif)
 
 12 February
 -----------
