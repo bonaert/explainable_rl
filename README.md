@@ -6,7 +6,7 @@ at the AI lab of the Vrije Universiteit Brussel (VUB).
 
 ## Current status
 
-For a detailed changelog, please see the [Changelog]((CHANGELOG.md)). Here's a summary 
+For a detailed changelog, please see the [Changelog](CHANGELOG.md). Here's a summary 
 of the current status of the thesis:
 
  - Implemented important RL algorithms, for both discrete and continuous action spaces:
