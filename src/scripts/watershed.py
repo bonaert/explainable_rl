@@ -42,7 +42,7 @@ if __name__ == "__main__":
                            gamma=0.99,
                            use_tensorboard=True,
                            env_can_be_solved=False,
-                           save_model_frequency=10,
+                           save_model_frequency=20,
                            stop_at_threshold=False)
 
     # ddpg_policy = DDPGPolicy(state_dim, action_dim, env.action_space.high, env.action_space.low)
