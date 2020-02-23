@@ -133,18 +133,27 @@ class WatershedEnv(gym.Env):
     """ Watershed environment that respects the OpenAI gym interface"""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, limited_scenarios: bool = False, bizarre_actions: bool = False, ):
+    def __init__(self, limited_scenarios: bool = False, increment_actions: bool = False, bizarre_states: bool = False):
+        """ Creates the Watershed environment
+        :param limited_scenarios: if True, use only the 3 scenarios in the paper instead of the whole 150 scenarios
+        :param increment_actions: if True, actions increment the state. If False, the state is overwritten by the action
+        :param bizarre_states: if False, use the values of the direct variables as the state. If False, just use the
+        scenario number as the state (constant during a whole episode).
+        """
         super(WatershedEnv, self).__init__()
 
         self.relevant_q1 = limited_Q1 if limited_scenarios else all_Q1
         self.relevant_q2 = limited_Q2 if limited_scenarios else all_Q2
         self.relevant_s = limited_S if limited_scenarios else all_S
+        self.number_of_scenarios = len(self.relevant_q1)
 
-        self.bizarre_actions = bizarre_actions
+        self.bizarre_states = bizarre_states
+        self.increment_actions = increment_actions
 
         # Internal details
         self.step_number = 0
-        self.total_number_of_episodes = 1000 if not bizarre_actions else 50
+        self.step_number_one_hot = None
+        self.total_number_of_episodes = 1000 if increment_actions else 50
 
         # Fitness
         self.previous_fitness = None
@@ -180,7 +189,10 @@ class WatershedEnv(gym.Env):
     def setup_environment_parameters(self):
         # "Q1 and Q2 represent the monthly inflows of water into respectively
         # the mainstream and tributary (in L^3)"
-        self.scenario_number = random.randint(0, len(self.relevant_q1) - 1)
+        self.scenario_number = random.randint(0, self.number_of_scenarios - 1)
+        self.step_number_one_hot = np.zeros(self.number_of_scenarios)
+        self.step_number_one_hot[self.scenario_number] = 1
+
         self.Q1 = self.relevant_q1[self.scenario_number]
         self.Q2 = self.relevant_q2[self.scenario_number]
         # "S is storage capacity of the dam (in L^3)"
@@ -202,26 +214,29 @@ class WatershedEnv(gym.Env):
 
         # Define action and observation space
         # Observation space = 6-dimensional real values (values for x1, x2, x3, x4, x5, x6)
-        # Action space = 4-dimensional real values (maximum allowed changes in x1, x2, x4, x6)
-        if not self.bizarre_actions:
-            self.action_space = spaces.Box(
-                low=-np.ones(4),
-                high=np.ones(4)
-            )
+        if not self.bizarre_states:
             self.observation_space = spaces.Box(
                 low=-np.inf,
                 high=np.inf,
-                shape=(6, 1)
+                shape=(6 + self.number_of_scenarios, 1)
+            )
+        else:
+            self.observation_space = spaces.Box(
+                low=0,
+                high=1,
+                shape=(self.number_of_scenarios, 1)
+            )
+
+        # Action space = 4-dimensional real values (maximum allowed changes in x1, x2, x4, x6)
+        if self.increment_actions:
+            self.action_space = spaces.Box(
+                low=-np.ones(4),
+                high=np.ones(4)
             )
         else:
             self.action_space = spaces.Box(
                 low=self.flows_lower_bounds,
                 high=self.flows_upper_bounds
-            )
-            self.observation_space = spaces.Box(
-                low=0,
-                high=len(self.relevant_q1),
-                shape=(1, 1)
             )
 
     def reinitialise_state(self):
@@ -292,16 +307,16 @@ class WatershedEnv(gym.Env):
         if not type(action) is np.ndarray:
             raise Exception("The action must be a Numpy array but is of type %s (value = %s)" % (type(action), action))
 
-        if not self.bizarre_actions and not self.action_space.contains(action):
+        if self.increment_actions and not self.action_space.contains(action):
             action = action.clip(self.action_space.low, self.action_space.high)
 
         # Additionally, we must make sure the value will stay in the range
         # min <= x + action <= max
-        if self.bizarre_actions:
-            new_flow_values = action
-        else:
+        if self.increment_actions:
             current_values = self.x[np.array([0, 1, 3, 5])]
             new_flow_values = current_values + action
+        else:
+            new_flow_values = action
 
         new_flow_values = np.clip(new_flow_values, self.flows_lower_bounds, self.flows_upper_bounds)
         self.update_all_flows(new_flow_values)
@@ -315,12 +330,12 @@ class WatershedEnv(gym.Env):
 
         self.step_number += 1
 
-        if self.bizarre_actions:
-            reward = self.fitness
-            observation = np.array([self.scenario_number])
+        # reward = self.fitness - self.previous_fitness
+        reward = self.fitness
+        if self.bizarre_states:
+            observation = self.step_number_one_hot
         else:
-            reward = self.fitness - self.previous_fitness
-            observation = self.x[:]  # Make a copy of the state
+            observation = np.hstack([self.step_number_one_hot, self.x])
 
         done = (self.step_number == self.total_number_of_episodes)
         info = {}
@@ -351,10 +366,10 @@ class WatershedEnv(gym.Env):
 
         self.total_violations_sum = 0
 
-        if not self.bizarre_actions:
-            return self.x[:]
+        if self.bizarre_states:
+            return self.step_number_one_hot
         else:
-            return np.array([self.scenario_number])
+            return np.hstack([self.step_number_one_hot, self.x])
 
     def render(self, mode: str = 'human'):
         """ Renders the environment and the state of the flows """

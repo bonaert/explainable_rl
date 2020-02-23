@@ -14,11 +14,11 @@ from training.sac import SacParams, sac_train
 
 if __name__ == "__main__":
     # env = gym.make('watershed-v0')
-    env = gym.make('watershed-v0', limited_scenarios=False, bizarre_actions=True)
+    env = gym.make('watershed-v0', limited_scenarios=False, increment_actions=False, bizarre_states=False)
 
-    simple_policy = SimplePolicyContinuous(input_size=env.observation_space.shape[0],
-                                           output_size=env.action_space.shape[0])
-    optimizer = torch.optim.Adam(params=simple_policy.parameters(), lr=1e-4)
+    # simple_policy = SimplePolicyContinuous(input_size=env.observation_space.shape[0],
+    #                                        output_size=env.action_space.shape[0])
+    # optimizer = torch.optim.Adam(params=simple_policy.parameters(), lr=1e-4)
 
     # TODO: doesn't solve it, need to improve this
     # Possible problems: the environment changes a lot, need to see if Karl
