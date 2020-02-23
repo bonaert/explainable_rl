@@ -98,6 +98,7 @@
 
 
 import os
+import random
 from typing import Union, List
 
 import gym
@@ -112,45 +113,55 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, 'data')
 
 
-def readFlowsFromFile(filename: str):
+def read_flows_from_file(filename: str):
     """ Read values in the file specified by the path.
     There is one number per line. The files end with a new line"""
     with open(os.path.join(DATA_DIR, filename)) as f:
         return [int(x.strip()) for x in f.readlines() if x.strip()]
 
 
-allQ1 = readFlowsFromFile("Q1_proportional.txt")
-allQ2 = readFlowsFromFile("Q2_proportional.txt")
-allS = readFlowsFromFile("S_proportional.txt")
+all_Q1 = read_flows_from_file("Q1_proportional.txt")
+all_Q2 = read_flows_from_file("Q2_proportional.txt")
+all_S = read_flows_from_file("S_proportional.txt")
+
+limited_Q1 = [160, 115, 80]
+limited_Q2 = [65, 50, 35]
+limited_S = [15, 12, 10]
 
 
-# The environment
 class WatershedEnv(gym.Env):
     """ Watershed environment that respects the OpenAI gym interface"""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, scenarioNum: int = 0):
+    def __init__(self, limited_scenarios: bool = False, bizarre_actions: bool = False, ):
         super(WatershedEnv, self).__init__()
 
+        self.relevant_q1 = limited_Q1 if limited_scenarios else all_Q1
+        self.relevant_q2 = limited_Q2 if limited_scenarios else all_Q2
+        self.relevant_s = limited_S if limited_scenarios else all_S
+
+        self.bizarre_actions = bizarre_actions
+
         # Internal details
-        self.stepNum = 0
-        self.TOTAL_NUMBER_OF_EPISODES = 1000
+        self.step_number = 0
+        self.total_number_of_episodes = 1000 if not bizarre_actions else 50
 
         # Fitness
+        self.previous_fitness = None
         self.fitness = 0
 
         # Objective function
-        self.objectiveScores = [0.0] * 6
-        self.totalObjectiveScore = 0
+        self.objective_scores = [0.0] * 6
+        self.total_objective_score = 0
 
         # Violations
-        self.constraintValues = [0.0] * 9
+        self.constraint_values = [0.0] * 9
         self.violations = 0
-        self.violationPenalty = 0
-        self.numViolations = 0
-        self.violationsMultiplier = 100
+        self.violation_penalty = 0
+        self.num_violations = 0
+        self.violations_multiplier = 100
 
-        self.totalViolationsSum = 0
+        self.total_violations_sum = 0
 
         # Objective function coefficients
         self.a = [-0.20, -0.06, -0.29, -0.13, -0.056, -0.15]
@@ -160,84 +171,99 @@ class WatershedEnv(gym.Env):
         # Used in verifying boundaries and computing constraints
         self.alpha = [12.0, 10.0, 8.0, 6.0, 15.0, 10.0]
 
+        self.setup_environment_parameters()
+
+        # Variables to be optimized
+        self.x = np.zeros(6)  # To make pylint happy and get better auto-completion
+        self.reinitialise_state()
+
+    def setup_environment_parameters(self):
         # "Q1 and Q2 represent the monthly inflows of water into respectively
         # the mainstream and tributary (in L^3)"
-        self.Q1 = allQ1[scenarioNum]
-        self.Q2 = allQ2[scenarioNum]
-
+        self.scenario_number = random.randint(0, len(self.relevant_q1) - 1)
+        self.Q1 = self.relevant_q1[self.scenario_number]
+        self.Q2 = self.relevant_q2[self.scenario_number]
         # "S is storage capacity of the dam (in L^3)"
-        self.S = allS[scenarioNum]
-
+        self.S = self.relevant_s[self.scenario_number]
         # Lower and upper bounds for each variable that is directly
         # controllable by the ser.
-        self.lowerBounds = np.array([
+        self.flows_lower_bounds = np.array([
             self.alpha[0],  # x1
             0,  # x2
             self.alpha[2],  # x4
             self.alpha[4]  # x6
         ])
-        self.upperBounds = np.array([
+        self.flows_upper_bounds = np.array([
             self.Q1 - self.alpha[1],  # x1
             self.S + self.Q1 - self.alpha[0],  # x2
             self.Q2 - self.alpha[3],  # x4
             self.S + self.Q1 + self.Q2 - self.alpha[0] - self.alpha[2] - self.alpha[5]  # x6
         ])
 
-        maxIncrease = np.ones(4)  #self.upperBounds - self.lowerBounds
-        maxDecrease = -np.ones(4)  #-maxIncrease
-
         # Define action and observation space
         # Observation space = 6-dimensional real values (values for x1, x2, x3, x4, x5, x6)
-        self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(6, 1)
-        )
         # Action space = 4-dimensional real values (maximum allowed changes in x1, x2, x4, x6)
-        self.action_space = spaces.Box(
-            low=maxDecrease,
-            high=maxIncrease
-        )
+        if not self.bizarre_actions:
+            self.action_space = spaces.Box(
+                low=-np.ones(4),
+                high=np.ones(4)
+            )
+            self.observation_space = spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(6, 1)
+            )
+        else:
+            self.action_space = spaces.Box(
+                low=self.flows_lower_bounds,
+                high=self.flows_upper_bounds
+            )
+            self.observation_space = spaces.Box(
+                low=0,
+                high=len(self.relevant_q1),
+                shape=(1, 1)
+            )
 
-        # Variables to be optimized
-        self.x = np.zeros(6)  # To make pylint happy and get better auto-completion
-        self.initializeState()
+    def reinitialise_state(self):
+        initial_random_values = np.random.uniform(low=self.flows_lower_bounds, high=self.flows_upper_bounds)
+        self.update_all_flows(initial_random_values)
+        self.previous_fitness = None
+        self.fitness = 0
 
-    def initializeState(self):
-        initialRandomValues = np.random.uniform(low=self.lowerBounds, high=self.upperBounds)
-        self.updateAllFlows(initialRandomValues)
+    def update_violations(self):
+        self.constraint_values[0] = self.alpha[0] - self.x[0]
+        self.constraint_values[1] = self.alpha[1] - self.Q1 + self.x[0]
+        self.constraint_values[2] = self.x[1] - self.S - self.Q1 + self.x[0]
+        self.constraint_values[3] = self.alpha[3] - self.x[2]
+        self.constraint_values[4] = self.alpha[2] - self.x[3]
+        self.constraint_values[5] = self.alpha[3] - self.Q2 + self.x[3]
+        self.constraint_values[6] = self.alpha[5] - self.x[4]
+        self.constraint_values[7] = self.alpha[4] - self.x[5]
+        self.constraint_values[8] = self.alpha[5] - self.x[1] - self.x[2] + self.x[5]
 
-    def updateViolations(self):
-        self.constraintValues[0] = self.alpha[0] - self.x[0]
-        self.constraintValues[1] = self.alpha[1] - self.Q1 + self.x[0]
-        self.constraintValues[2] = self.x[1] - self.S - self.Q1 + self.x[0]
-        self.constraintValues[3] = self.alpha[3] - self.x[2]
-        self.constraintValues[4] = self.alpha[2] - self.x[3]
-        self.constraintValues[5] = self.alpha[3] - self.Q2 + self.x[3]
-        self.constraintValues[6] = self.alpha[5] - self.x[4]
-        self.constraintValues[7] = self.alpha[4] - self.x[5]
-        self.constraintValues[8] = self.alpha[5] - self.x[1] - self.x[2] + self.x[5]
-
-        violationsList = [v for v in self.constraintValues if v > 0]
+        violationsList = [v for v in self.constraint_values if v > 0]
         self.violations = sum(violationsList)
-        self.numViolations = len(violationsList)
+        self.num_violations = len(violationsList)
         if self.violations > 0:
             # The penalty function for a constrain violation is given by C * (V + 1)
             # Where C is the violation constant and V the violation amount
-            self.violationPenalty = self.violationsMultiplier * (self.violations + 1)
+            self.violation_penalty = self.violations_multiplier * (self.violations + 1)
         else:
-            self.violationPenalty = 0  # = violations
+            self.violation_penalty = 0  # = violations
 
-    def updateObjective(self):
+    def update_objective(self):
         for i in range(6):
-            self.objectiveScores[i] = self.a[i] * self.x[i] ** 2 + self.b[i] * self.x[i] + self.c[i]
+            self.objective_scores[i] = self.a[i] * self.x[i] ** 2 + self.b[i] * self.x[i] + self.c[i]
 
-        self.totalObjectiveScore = sum(self.objectiveScores)
+        self.total_objective_score = sum(self.objective_scores)
 
-    def updateFitness(self):
-        self.fitness = self.totalObjectiveScore - self.violationPenalty
+    def update_fitness(self):
+        self.previous_fitness = self.fitness
+        self.update_violations()
+        self.update_objective()
+        self.fitness = self.total_objective_score - self.violation_penalty
 
-    def updateAllFlows(self, flowsControllableByAgent: Union[List[float], np.ndarray]):
+    def update_all_flows(self, flowsControllableByAgent: Union[List[float], np.ndarray]):
         # flowsControllableByAgent =
         #    Programming notation: [x[0], x[1], x[3], x[5]]
         #    Math notation:        [x1,   x2,   x4,   x6  ]
@@ -266,61 +292,74 @@ class WatershedEnv(gym.Env):
         if not type(action) is np.ndarray:
             raise Exception("The action must be a Numpy array but is of type %s (value = %s)" % (type(action), action))
 
-        if not self.action_space.contains(action):
+        if not self.bizarre_actions and not self.action_space.contains(action):
             action = action.clip(self.action_space.low, self.action_space.high)
 
-        currentValues = self.x[np.array([0, 1, 3, 5])]
-        flowsControllableByAgent = currentValues + action
-        flowsControllableByAgent = np.clip(flowsControllableByAgent, self.lowerBounds, self.upperBounds)
-        self.updateAllFlows(flowsControllableByAgent)
+        # Additionally, we must make sure the value will stay in the range
+        # min <= x + action <= max
+        if self.bizarre_actions:
+            new_flow_values = action
+        else:
+            current_values = self.x[np.array([0, 1, 3, 5])]
+            new_flow_values = current_values + action
+
+        new_flow_values = np.clip(new_flow_values, self.flows_lower_bounds, self.flows_upper_bounds)
+        self.update_all_flows(new_flow_values)
 
         if any([x < 0 for x in self.x]):
             pass
             # TODO: should I clip the actions to ensure the flows are always positive?
-            #raise Exception(f"Negative flows! x = {[round(x, 4) for x in self.x]}")
+            # raise Exception(f"Negative flows! x = {[round(x, 4) for x in self.x]}")
 
-        self.updateViolations()
-        self.updateObjective()
-        self.updateFitness()
+        self.update_fitness()
 
-        self.stepNum += 1
+        self.step_number += 1
 
-        observation = self.x[:]  # Make a copy of the state
-        reward = self.fitness
-        done = (self.stepNum == self.TOTAL_NUMBER_OF_EPISODES)
+        if self.bizarre_actions:
+            reward = self.fitness
+            observation = np.array([self.scenario_number])
+        else:
+            reward = self.fitness - self.previous_fitness
+            observation = self.x[:]  # Make a copy of the state
+
+        done = (self.step_number == self.total_number_of_episodes)
         info = {}
         return observation, reward, done, info
 
     def reset(self):
         """ Reset the environment to its initial values """
-        self.stepNum = 0
+        self.step_number = 0
+
+        self.setup_environment_parameters()
 
         # Reset state to random values
-        self.initializeState()
+        self.reinitialise_state()
 
         # Fitness
         self.fitness = 0
 
         # Objective function
-        self.objectiveScores = [0.0] * 6
-        self.totalObjectiveScore = 0
+        self.objective_scores = [0.0] * 6
+        self.total_objective_score = 0
 
         # Violations
-        self.constraintValues = [0.0] * 9
+        self.constraint_values = [0.0] * 9
         self.violations = 0
-        self.violationPenalty = 0
-        self.numViolations = 0
-        self.violationsMultiplier = 100
+        self.violation_penalty = 0
+        self.num_violations = 0
+        self.violations_multiplier = 100
 
-        self.totalViolationsSum = 0
+        self.total_violations_sum = 0
 
-        return self.x[:]
+        if not self.bizarre_actions:
+            return self.x[:]
+        else:
+            return np.array([self.scenario_number])
 
     def render(self, mode: str = 'human'):
         """ Renders the environment and the state of the flows """
         # Note, this may seem badly aligned but it is correct!
-        # It becomes aligned after substituing the variables by
-        # their real value
+        # It becomes aligned after substituting the variables by their real value
         content = """
                           x1 = {x1:.2f}
                         ------------> City

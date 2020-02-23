@@ -132,8 +132,6 @@ if __name__ == "__main__":
         policy_optimizer=Adam(sac_policy.parameters(), lr=5e-4),  # Same LR for both policy and value
         value_optimizer=Adam(value_parameters, lr=5e-4),
         replay_buffer_size=2_000_000,
-        update_frequency=50,
-        update_start=1000,
         batch_size=100,
         polyak=0.995,
         num_random_action_steps=10000,

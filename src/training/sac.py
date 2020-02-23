@@ -192,7 +192,7 @@ def sac_train(
     training_info = TrainingInfo(GAMMA=run_params.gamma)
     replay_buffer = ReplayBuffer(sac_params.replay_buffer_size)
 
-    step_number, test_episode_num = 0, 0
+    training_step_number, step_number, test_episode_num = 0, 0, 0
     max_episode_steps = env.spec.max_episode_steps
 
     for episode_number in range(run_params.maximum_episodes):
@@ -254,7 +254,8 @@ def sac_train(
         # https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_BipedalWalker-v2_200ep.py
         for update_step in range(int(episode_length * 1.5)):
             batch_transitions = replay_buffer.sample_batch(sac_params.batch_size)
-            update_models(batch_transitions, sac_params, run_params, writer, step_number)
+            update_models(batch_transitions, sac_params, run_params, writer, training_step_number)
+            training_step_number += 1
 
         if (episode_number + 0) % sac_params.test_frequency == 0:
             test_agent_performance(env, sac_params, run_params, writer, test_episode_num, scaler)
@@ -266,8 +267,8 @@ def sac_train(
         training_info.update_running_reward()
 
         # Add some logging
-        log_on_console(env, episode_number, reward, run_params, t, training_info)
-        log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer)
+        log_on_console(env, episode_number, reward, run_params, t + 1, training_info)
+        log_on_tensorboard(env, episode_number, reward, run_params, t + 1, training_info, writer)
 
         # Check if we have solved the environment reliably
         if run_params.stop_at_threshold and env.spec.reward_threshold is not None and training_info.running_reward > env.spec.reward_threshold:

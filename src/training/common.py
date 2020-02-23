@@ -320,6 +320,7 @@ def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocess
     with torch.no_grad():
         episode_number = 0
         episode_rewards = []
+        last_rewards = []
         while True:
             state, done, episode_reward, episode_length = env.reset(), False, 0, 0
             while not done:
@@ -338,29 +339,32 @@ def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocess
                 episode_reward += reward
                 episode_length += 1
             episode_rewards.append(episode_reward)
+            last_rewards.append(reward)
 
             print(f"Episode {episode_number}\t"
-                  f"Reward: {episode_reward:.3f}\t"
-                  f"Number of steps: {episode_length}\t"
-                  f"Avg reward: {np.mean(episode_rewards):.3f} +- {np.std(episode_rewards):.3f}")
+                  f"Reward: {episode_reward:.2f} \t"
+                  f"Number of steps: {episode_length} \t"
+                  f"Avg reward: {np.mean(episode_rewards):.2f} +- {np.std(episode_rewards):.1f} \t"
+                  f"Last reward: {reward:.2f} \t"
+                  f"Avg Last reward: {np.mean(last_rewards):.2f} +- {np.std(last_rewards):.1f}")
             episode_number += 1
 
             if run_once:
                 return
 
 
-def log_on_tensorboard(env, episode_number, reward, run_params, t, training_info, writer):
+def log_on_tensorboard(env, episode_number, reward, run_params, num_episode_steps, training_info, writer):
     """ If Tensorboard logging should be done at the current episode, statistics about the current episode and the
     general state of the training procedure are logged."""
     if run_params.use_tensorboard:
         if run_params.env_can_be_solved:
-            writer.add_scalar("Data/Solved", t < env.spec.max_episode_steps - 1, episode_number)
+            writer.add_scalar("Data/Solved", num_episode_steps < env.spec.max_episode_steps - 1, episode_number)
 
-        writer.add_scalar("Data/Average reward", float(training_info.episode_reward) / t, episode_number)
+        writer.add_scalar("Data/Average reward", float(training_info.episode_reward) / num_episode_steps, episode_number)
         writer.add_scalar("Data/Episode reward", float(training_info.episode_reward), episode_number)
         writer.add_scalar("Data/Running reward", float(training_info.running_reward), episode_number)
         writer.add_scalar("Data/Last reward", float(reward), episode_number)
-        writer.add_scalar("Data/Number of steps per episode", t, episode_number)
+        writer.add_scalar("Data/Number of steps per episode", num_episode_steps, episode_number)
         writer.flush()
 
 
