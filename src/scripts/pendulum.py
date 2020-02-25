@@ -4,14 +4,14 @@ import gym
 import torch
 from torch.optim import Adam
 
-from networks.simple import SimplePolicyContinuous, SimplePolicyContinuous2, SimpleCritic2, DDPGPolicy, \
+from src.networks.simple import SimplePolicyContinuous, SimplePolicyContinuous2, SimpleCritic2, DDPGPolicy, \
     DDPGValueEstimator, SacPolicy, SacValueEstimator
 from src.training.reinforce import reinforceTraining
-from training.actor_critic import actor_critic_train_per_step
-from training.common import RunParams
-from training.ddpg import DDPGParams, ddpg_train
-from training.noise import OUNoise
-from training.sac import SacParams, sac_train
+from src.training.actor_critic import actor_critic_train_per_step
+from src.training.common import RunParams
+from src.training.ddpg import DDPGParams, ddpg_train
+from src.training.noise import OUNoise
+from src.training.sac import SacParams, sac_train
 
 if __name__ == "__main__":
     env = gym.make('Pendulum-v0')

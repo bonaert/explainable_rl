@@ -9,12 +9,12 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 
-from networks.simple import DDPGPolicy, DDPGValueEstimator
-from training.common import RunParams, TrainingInfo, setup_observation_scaler, scale_state, log_on_console, log_on_tensorboard, \
+from src.networks.simple import DDPGPolicy, DDPGValueEstimator
+from src.training.common import RunParams, TrainingInfo, setup_observation_scaler, scale_state, log_on_console, log_on_tensorboard, \
     close_tensorboard, save_model, save_scaler, polyak_average, policy_run, load_model, load_scaler
 
-from training.noise import OUNoise, NormalNoise
-from training.replay_buffer import ReplayBuffer
+from src.training.noise import OUNoise, NormalNoise
+from src.training.replay_buffer import ReplayBuffer
 
 
 @dataclass

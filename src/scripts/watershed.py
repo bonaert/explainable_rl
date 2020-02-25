@@ -7,10 +7,10 @@ from torch.optim import Adam
 
 from src.networks.simple import SimplePolicyContinuous, DDPGPolicy, DDPGValueEstimator, SacPolicy, SacValueEstimator
 from src.training.reinforce import reinforceTraining
-from training.common import RunParams
-from training.ddpg import DDPGParams, ddpg_train
-from training.noise import OUNoise
-from training.sac import SacParams, sac_train
+from src.training.common import RunParams
+from src.training.ddpg import DDPGParams, ddpg_train
+from src.training.noise import OUNoise
+from src.training.sac import SacParams, sac_train
 
 if __name__ == "__main__":
     # env = gym.make('watershed-v0')

@@ -27,5 +27,10 @@ testNoDebugVerbose:
 push:
 	git push origin master
 	git push gitlab master
+	git push github master
 
-.PHONY: init test
+docs:
+	pdoc3 --html src --output-dir docs --force
+	pdoc3 --html gym_watershed --output-dir gym-watershed/docs --force
+
+.PHONY: init test docs

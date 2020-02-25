@@ -2,8 +2,8 @@ import gym
 import torch
 
 from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous2, SimpleCritic2
-from training.actor_critic import actor_critic_train_per_step
-from training.common import RunParams
+from src.training.actor_critic import actor_critic_train_per_step
+from src.training.common import RunParams
 
 if __name__ == "__main__":
     env = gym.make('Acrobot-v1')

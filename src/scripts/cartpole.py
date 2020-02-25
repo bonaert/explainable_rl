@@ -3,7 +3,7 @@ import torch
 
 from src.networks.simple import SimplePolicyDiscrete
 from src.training.reinforce import reinforceTraining
-from training.common import RunParams
+from src.training.common import RunParams
 
 if __name__ == "__main__":
     env = gym.make('CartPole-v1')

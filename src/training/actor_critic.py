@@ -10,7 +10,7 @@ from torch.optim.optimizer import Optimizer
 
 from src.training.common import select_action_discrete, select_action_continuous, TrainingInfo, get_state_value, \
     prepare_state, setup_observation_scaler, scale_state, RunParams, close_tensorboard
-from training.common import log_on_tensorboard, log_on_console
+from src.training.common import log_on_tensorboard, log_on_console
 
 
 def train_policy_on_episode(optimizer: Optimizer, training_info: TrainingInfo, episode_number: int):

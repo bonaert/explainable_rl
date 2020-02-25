@@ -19,3 +19,5 @@ data/*.data
 /src/scripts/runs/
 /data/*/*.data
 /videos/*.mp4
+
+docs/

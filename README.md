@@ -23,7 +23,7 @@ of the current status of the thesis:
 - Implemented the Watershed environment (a custom OpenAI Gym compatible environment). It's
   originally a classical optimization problem but RL will be applied to solve it
 
-![Solved Bipedal Walker Hardcode](https://github.com/bonaert/explainable_rl/blob/master/videos/solved_bipedal_walker_hardcore_sac.gif?raw=true)
+![Solved Bipedal Walker Hardcode](https://github.com/bonaert/explainable_rl/blob/master/media/solved_bipedal_walker_hardcore_sac.gif?raw=true)
 
 
 ## Background
@@ -46,3 +46,16 @@ policies through the application of the Network Distillation literature from the
 community. Several approaches exist, but we are specifically interested in the application of
 decision-tree based approaches such as Soft Decision Trees and Adaptive Neural Trees. However,
 additional approaches can be explored at any time.
+
+## Documentation
+
+Documentation can be generate very easily, just run:
+
+`make docs`
+
+You will then have documentation for the project and the Watershed environment:
+
+1. Project documentation: see docs/src/index.html
+2. Watershed documentation: see gym-watershed/docs/gym_watershed/index.html
+
+![Documentation DDPG](https://github.com/bonaert/explainable_rl/blob/master/media/docsDDPG.png?raw=true)

@@ -1,6 +1,6 @@
 import gym
 import gym_watershed
-from training.sac import sac_run_from_disk
+from src.training.sac import sac_run_from_disk
 
 if __name__ == "__main__":
     # env = gym.make('watershed-v0', limited_scenarios=False, increment_actions=True, bizarre_states=True)
