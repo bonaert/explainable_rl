@@ -256,13 +256,13 @@ class WatershedEnv(gym.Env):
         self.constraint_values[7] = self.alpha[4] - self.x[5]
         self.constraint_values[8] = self.alpha[5] - self.x[1] - self.x[2] + self.x[5]
 
-        violationsList = [v for v in self.constraint_values if v > 0]
+        violationsList = [v + 1 for v in self.constraint_values if v > 0]
         self.violations = sum(violationsList)
         self.num_violations = len(violationsList)
         if self.violations > 0:
             # The penalty function for a constrain violation is given by C * (V + 1)
             # Where C is the violation constant and V the violation amount
-            self.violation_penalty = self.violations_multiplier * (self.violations + 1)
+            self.violation_penalty = self.violations_multiplier * self.violations
         else:
             self.violation_penalty = 0  # = violations
 
@@ -382,7 +382,7 @@ class WatershedEnv(gym.Env):
                       /                 x2 = {x2:.2f}              ----------------> Farms
         Q1 = {Q1} --------------> Dam ----------------         /
                               S = {S}                |       /
-                                                    |-------------------------> Lower triburary
+                                                    |-------------------------> Lower tributary
                                                     |             x6 = {x6:.2f}
         Q2 = {Q2} ------------------------------------
                       \\                 x3 = {x3:.2f}
