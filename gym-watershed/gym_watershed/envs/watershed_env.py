@@ -153,7 +153,7 @@ class WatershedEnv(gym.Env):
         # Internal details
         self.step_number = 0
         self.step_number_one_hot = None
-        self.total_number_of_episodes = 1000 if increment_actions else 50
+        self.total_number_of_episodes = 100 if increment_actions else 50
 
         # Fitness
         self.previous_fitness = None
@@ -197,6 +197,9 @@ class WatershedEnv(gym.Env):
         self.Q2 = self.relevant_q2[self.scenario_number]
         # "S is storage capacity of the dam (in L^3)"
         self.S = self.relevant_s[self.scenario_number]
+
+        self.state_encoded = np.array([self.Q1, self.Q2, self.S])
+
         # Lower and upper bounds for each variable that is directly
         # controllable by the ser.
         self.flows_lower_bounds = np.array([
@@ -204,40 +207,53 @@ class WatershedEnv(gym.Env):
             0,  # x2
             self.alpha[2],  # x4
             self.alpha[4]  # x6
-        ])
+        ], dtype=np.float32)
         self.flows_upper_bounds = np.array([
             self.Q1 - self.alpha[1],  # x1
             self.S + self.Q1 - self.alpha[0],  # x2
             self.Q2 - self.alpha[3],  # x4
             self.S + self.Q1 + self.Q2 - self.alpha[0] - self.alpha[2] - self.alpha[5]  # x6
-        ])
+        ], dtype=np.float32)
 
         # Define action and observation space
         # Observation space = 6-dimensional real values (values for x1, x2, x3, x4, x5, x6)
+        vs = [self.relevant_q1, self.relevant_q2, self.relevant_s]
         if not self.bizarre_states:
             self.observation_space = spaces.Box(
                 low=-np.inf,
                 high=np.inf,
-                shape=(6 + self.number_of_scenarios, 1)
+                shape=(3 + 4, 1),
             )
         else:
+            # self.observation_space = spaces.Box(
+            #     low=np.array([np.min(v) for v in vs], dtype=np.float32),
+            #     high=np.array([np.max(v) for v in vs], dtype=np.float32),
+            # )
             self.observation_space = spaces.Box(
-                low=0,
-                high=1,
+                low=np.float32(0.0),
+                high=np.float32(1.0),
                 shape=(self.number_of_scenarios, 1)
             )
 
         # Action space = 4-dimensional real values (maximum allowed changes in x1, x2, x4, x6)
         if self.increment_actions:
             self.action_space = spaces.Box(
-                low=-np.ones(4),
-                high=np.ones(4)
+                low=-np.ones(4) * 10,
+                high=np.ones(4) * 10,
             )
         else:
             self.action_space = spaces.Box(
                 low=self.flows_lower_bounds,
                 high=self.flows_upper_bounds
             )
+
+    def get_observation(self):
+        if self.bizarre_states:
+            observation = self.step_number_one_hot
+            # observation = self.state_encoded  # self.step_number_one_hot
+        else:
+            observation = np.hstack([self.state_encoded, self.x[np.array([0, 1, 3, 5])]])
+        return observation
 
     def reinitialise_state(self):
         initial_random_values = np.random.uniform(low=self.flows_lower_bounds, high=self.flows_upper_bounds)
@@ -332,10 +348,7 @@ class WatershedEnv(gym.Env):
 
         # reward = self.fitness - self.previous_fitness
         reward = self.fitness
-        if self.bizarre_states:
-            observation = self.step_number_one_hot
-        else:
-            observation = np.hstack([self.step_number_one_hot, self.x])
+        observation = self.get_observation()
 
         done = (self.step_number == self.total_number_of_episodes)
         info = {}
@@ -366,10 +379,7 @@ class WatershedEnv(gym.Env):
 
         self.total_violations_sum = 0
 
-        if self.bizarre_states:
-            return self.step_number_one_hot
-        else:
-            return np.hstack([self.step_number_one_hot, self.x])
+        return self.get_observation()
 
     def render(self, mode: str = 'human'):
         """ Renders the environment and the state of the flows """
