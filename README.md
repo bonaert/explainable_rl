@@ -49,13 +49,13 @@ additional approaches can be explored at any time.
 
 ## Documentation
 
-Documentation can be generate very easily, just run:
+Documentation can be generated very easily - just run:
 
 `make docs`
 
 You will then have documentation for the project and the Watershed environment:
 
-1. Project documentation: see docs/src/index.html
-2. Watershed documentation: see gym-watershed/docs/gym_watershed/index.html
+1. Project documentation: `docs/src/index.html`
+2. Watershed documentation: `gym-watershed/docs/gym_watershed/index.html`
 
 ![Documentation DDPG](https://github.com/bonaert/explainable_rl/blob/master/media/docsDDPG.png?raw=true)
