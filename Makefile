@@ -5,7 +5,7 @@ init:
 
 updateEnv:
 	# Global install with caching
-	sudo -H pip3 install -e gym-watershed
+	pip3.7 install --editable gym-watershed
 
 test:
 	# -x --pdb: drop to PDB on first failure, then end test session

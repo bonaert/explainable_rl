@@ -117,7 +117,7 @@ if __name__ == "__main__":
     #
     # ddpg_train(env, run_params, ddpg_params)
 
-    sac_policy = SacPolicy(state_dim, action_dim, env.action_space.high, env.action_space.low)
+    sac_policy = SacPolicy(state_dim, action_dim, env.action_space.low, env.action_space.high)
     sac_value_estimator1 = SacValueEstimator(state_dim, action_dim)
     sac_value_estimator2 = SacValueEstimator(state_dim, action_dim)
     value_parameters = list(sac_value_estimator1.parameters()) + list(sac_value_estimator2.parameters())

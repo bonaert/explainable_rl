@@ -4,6 +4,7 @@ import gym
 import gym_watershed
 import torch
 from torch.optim import Adam
+import numpy as np
 
 from src.networks.simple import SimplePolicyContinuous, DDPGPolicy, DDPGValueEstimator, SacPolicy, SacValueEstimator
 from src.training.reinforce import reinforceTraining
@@ -14,7 +15,7 @@ from src.training.sac import SacParams, sac_train
 
 if __name__ == "__main__":
     # env = gym.make('watershed-v0')
-    env = gym.make('watershed-v0', limited_scenarios=False, increment_actions=False, bizarre_states=False)
+    env = gym.make('watershed-v0', limited_scenarios=False, increment_actions=False, bizarre_states=True)
 
     # simple_policy = SimplePolicyContinuous(input_size=env.observation_space.shape[0],
     #                                        output_size=env.action_space.shape[0])
@@ -35,7 +36,7 @@ if __name__ == "__main__":
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     run_params = RunParams(continuous_actions=True,
-                           should_scale_states=False,
+                           should_scale_states=True,
                            render_frequency=0,
                            entropy_coeff=0,
                            entropy_decay=1,
@@ -79,7 +80,16 @@ if __name__ == "__main__":
     #         return obs, reward / 1000, done, info
     # env = RewardScalerWrapper(env)
 
-    sac_policy = SacPolicy(state_dim, action_dim, env.action_space.high, env.action_space.low)
+    # The environment's action space changes in every scenario
+    # so I think it's better to just pick a action range that's large enough for all scenarios
+    # It won't lead to problems, because we clip the action to fit the action space
+    # Note: by being constant, this has the nice advantage that we don't need to store it to disk
+    sac_policy = SacPolicy(
+        state_dim,
+        action_dim,
+        action_low=np.array([0, 0, 0, 0]),
+        action_high=1.5 * env.action_space.high
+    )
     sac_value_estimator1 = SacValueEstimator(state_dim, action_dim)
     sac_value_estimator2 = SacValueEstimator(state_dim, action_dim)
     value_parameters = list(sac_value_estimator1.parameters()) + list(sac_value_estimator2.parameters())

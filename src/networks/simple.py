@@ -230,14 +230,14 @@ class SacPolicy(nn.Module):
        state, SAC wouldn't work. They challenge us to figure out why and to test this claim empirically.
     """
 
-    def __init__(self, state_dim: int, action_dim: int, action_high: np.ndarray, action_low: np.ndarray):
+    def __init__(self, state_dim: int, action_dim: int, action_low: np.ndarray, action_high: np.ndarray):
         super().__init__()
         self.layers = make_network([state_dim, 256, 256], nn.ReLU, nn.ReLU)
         self.mu_layer = nn.Linear(256, action_dim)
         self.sigma_layer = nn.Linear(256, action_dim)
 
-        self.action_high = torch.tensor(action_high)
         self.action_low = torch.tensor(action_low)
+        self.action_high = torch.tensor(action_high)
 
     def forward(self, states: torch.Tensor, deterministic=False, compute_log_prob=True) -> Tuple[torch.Tensor, torch.Tensor]:
         """ Returns the actions and their log probs as a torch Tensors (gradients can be computed)"""

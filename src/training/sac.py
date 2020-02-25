@@ -12,8 +12,8 @@ import sklearn.preprocessing
 
 from src.networks.simple import SacPolicy, SacValueEstimator
 from src.training.common import RunParams, TrainingInfo, setup_observation_scaler, scale_state, log_on_console, \
-    log_on_tensorboard, \
-    close_tensorboard, save_model, save_scaler, polyak_average, policy_run, load_model, load_scaler
+    log_on_tensorboard, close_tensorboard, save_model, save_scaler, polyak_average, policy_run, \
+    load_model, load_scaler, save_tensor, load_numpy, save_numpy
 
 from src.training.replay_buffer import ReplayBuffer
 
@@ -199,6 +199,10 @@ def sac_train(
         state = env.reset()
         episode_length = 0
 
+        # Update policy bounds
+        # sac_params.policy.action_high = sac_params.policy_target.action_high = torch.tensor(env.action_space.high)
+        # sac_params.policy.action_low = sac_params.policy_target.action_low = torch.tensor(env.action_space.low)
+
         # Do a whole episode
         for t in range(max_episode_steps):
             if run_params.should_scale_states:
@@ -213,9 +217,12 @@ def sac_train(
                 action = env.action_space.sample()
                 log_prob = -1
 
+            # To be sure that actions are in the action space (see watershed.py)
+            # action = np.clip(action, env.action_space.low, env.action_space.high)
+
             # For debugging, log the Q-values
             if run_params.use_tensorboard:
-                if random.random() < 0.01:  # Don't log too often to avoid slowing things down
+                if random.random() < 0.02:  # Don't log too often to avoid slowing things down
                     s, a = torch.tensor(state).float(), torch.tensor(action).float()
                     value1 = sac_params.value_estimator1.forward(s, a)
                     value2 = sac_params.value_estimator2.forward(s, a)
@@ -287,6 +294,8 @@ def save_model_sac(env: gym.Env, sac_params: SacParams, scaler: sklearn.preproce
     save_model(sac_params.policy_target, env, "policy_target.data")
     save_model(sac_params.value_estimator1_target, env, "value_estimator1_target.data")
     save_model(sac_params.value_estimator2_target, env, "value_estimator2_target.data")
+    save_numpy(sac_params.policy_target.action_low.numpy(), env, "action_low.data")
+    save_numpy(sac_params.policy_target.action_high.numpy(), env, "action_high.data")
     if scaler is not None:
         save_scaler(scaler, env, "scaler.data")
 
@@ -296,7 +305,7 @@ def sac_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocessing
     """ Run the given SAC-trained policy (using optionally a observation / state scaler) on the environment
     indefinitely (by default) or over a single episode (if desired). By default the environment is rendered,
     but this can be disabled. """
-    return policy_run(env, policy, scaler, render, specify_deterministic_policy=False, run_once=run_once)
+    return policy_run(env, policy, scaler, render, algo_is_sac=True, run_once=run_once)
 
 
 def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False):
@@ -305,9 +314,18 @@ def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False
     By default the environment is rendered, but this can be disabled. """
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
-    ddpg_policy = load_model(
-        SacPolicy(state_dim, action_dim, env.action_space.high, env.action_space.low),
+
+    sac_policy: SacPolicy = load_model(
+        SacPolicy(
+            state_dim,
+            action_dim,
+            np.array([0, 0, 0, 0]),  # Will be replaced by the value in the numpy arrays
+            np.array([1, 1, 1, 1])   # we saved during training (see below)
+        ),
         env, "policy_target.data"
     )
+    sac_policy.action_low = torch.tensor(load_numpy(env, "action_low.data.npy"))
+    sac_policy.action_high = torch.tensor(load_numpy(env, "action_high.data.npy"))
+
     scaler = load_scaler(env, "scaler.data") if has_scaler else None
-    sac_run(env, ddpg_policy, scaler=scaler, render=render, run_once=run_once)
+    sac_run(env, sac_policy, scaler=scaler, render=render, run_once=run_once)

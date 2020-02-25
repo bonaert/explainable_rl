@@ -217,6 +217,16 @@ def get_path(env: gym.Env, filename: str, scripts_dir_path: Path):
     return full_path
 
 
+def save_numpy(values: torch.Tensor, env: gym.Env, filename: str):
+    """ Saves a Numpy array at the path 'data/{environment name}/{filename}' """
+    np.save(get_path(env, filename, Path.cwd()), values)
+
+
+def save_tensor(values: torch.Tensor, env: gym.Env, filename: str):
+    """ Saves a Pytorch Tensor at the path 'data/{environment name}/{filename}' """
+    torch.save(values, get_path(env, filename, Path.cwd()))
+
+
 def save_model(model: torch.nn.Module, env: gym.Env, filename: str):
     """ Saves the Pytorch model at the path 'data/{environment name}/{filename}' """
     torch.save(model.state_dict(), get_path(env, filename, Path.cwd()))
@@ -225,6 +235,17 @@ def save_model(model: torch.nn.Module, env: gym.Env, filename: str):
 def save_scaler(scaler, env: gym.Env, filename: str):
     """ Saves the Scikit-learn scaler at the path 'data/{environment name}/{filename}' """
     joblib.dump(scaler, get_path(env, filename, scripts_dir_path=Path.cwd()))
+
+
+def load_numpy(env: gym.Env, filename: str):
+    """ Loads the Numpy array at the path 'data/{environment name}/{filename}' """
+    return np.load(get_path(env, filename, Path.cwd().parent))
+
+
+def load_tensor(env: gym.Env, filename: str):
+    """ Loads the Pytorch Tensor at the path 'data/{environment name}/{filename}' """
+    full_path = get_path(env, filename, scripts_dir_path=Path.cwd().parent)
+    return torch.load(full_path).clone().detach()
 
 
 def load_model(model_to_fill: torch.nn.Module, env: gym.Env, filename: str):
@@ -246,7 +267,7 @@ def setup_observation_scaler(env: gym.Env) -> sklearn.preprocessing.StandardScal
     that can normalize observations, which is then returned. """
     observation_examples = np.array([env.observation_space.sample() for _ in range(10000)])
     scaler = sklearn.preprocessing.StandardScaler()
-    scaler.fit(observation_examples)
+    scaler.fit(observation_examples.squeeze())
     return scaler
 
 
@@ -312,7 +333,7 @@ def run_general_policy(
 
 
 def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocessing.StandardScaler = None,
-               render=True, specify_deterministic_policy=False, run_once=False):
+               render=True, algo_is_sac=False, run_once=False):
     """ Runs the policy on the environment, doing an infinite amount of episodes. The action space must be continuous.
         If needed, the states / observations can be scaled and the environment can be rendered at each step. Some
         logging is done on the console, to understand the behavior and results of the policy.
@@ -323,11 +344,17 @@ def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocess
         last_rewards = []
         while True:
             state, done, episode_reward, episode_length = env.reset(), False, 0, 0
+
+            # Update policy bounds
+            # if algo_is_sac:
+            #     policy.action_high = torch.tensor(env.action_space.high)
+            #     policy.action_low = torch.tensor(env.action_space.low)
+
             while not done:
                 if scaler:
                     state = scale_state(scaler, state)
 
-                if specify_deterministic_policy:
+                if algo_is_sac:
                     action = policy.get_actions(torch.tensor(state).float(), deterministic=True)
                 else:
                     action = policy.get_actions(torch.tensor(state).float())
@@ -360,7 +387,8 @@ def log_on_tensorboard(env, episode_number, reward, run_params, num_episode_step
         if run_params.env_can_be_solved:
             writer.add_scalar("Data/Solved", num_episode_steps < env.spec.max_episode_steps - 1, episode_number)
 
-        writer.add_scalar("Data/Average reward", float(training_info.episode_reward) / num_episode_steps, episode_number)
+        writer.add_scalar("Data/Average reward", float(training_info.episode_reward) / num_episode_steps,
+                          episode_number)
         writer.add_scalar("Data/Episode reward", float(training_info.episode_reward), episode_number)
         writer.add_scalar("Data/Running reward", float(training_info.running_reward), episode_number)
         writer.add_scalar("Data/Last reward", float(reward), episode_number)
