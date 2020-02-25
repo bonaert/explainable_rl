@@ -1,3 +1,4 @@
+pyswarms
 joblib
 scikit-learn
 torch
