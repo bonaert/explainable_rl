@@ -301,14 +301,15 @@ def save_model_sac(env: gym.Env, sac_params: SacParams, scaler: sklearn.preproce
 
 
 def sac_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocessing.StandardScaler = None,
-            render=True, run_once=False):
+            render=True, run_once=False, get_watershed_info=False):
     """ Run the given SAC-trained policy (using optionally a observation / state scaler) on the environment
     indefinitely (by default) or over a single episode (if desired). By default the environment is rendered,
     but this can be disabled. """
-    return policy_run(env, policy, scaler, render, algo_is_sac=True, run_once=run_once)
+    return policy_run(env, policy, scaler, render, algo_is_sac=True,
+                      run_once=run_once, get_watershed_info=get_watershed_info)
 
 
-def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False):
+def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False, get_watershed_info=False):
     """ Loads a SAC-trained policy (and optionally a observation / state scaler) and then runs them
     on the environment indefinitely (by default) or over a single episode (if desired).
     By default the environment is rendered, but this can be disabled. """
@@ -328,4 +329,4 @@ def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False
     sac_policy.action_high = torch.tensor(load_numpy(env, "action_high.data.npy"))
 
     scaler = load_scaler(env, "scaler.data") if has_scaler else None
-    sac_run(env, sac_policy, scaler=scaler, render=render, run_once=run_once)
+    return sac_run(env, sac_policy, scaler=scaler, render=render, run_once=run_once, get_watershed_info=get_watershed_info)

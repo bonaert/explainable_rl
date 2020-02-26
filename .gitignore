@@ -21,3 +21,4 @@ data/*.data
 /videos/*.mp4
 
 docs/
+/notebooks/.ipynb_checkpoints/

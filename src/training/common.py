@@ -333,17 +333,22 @@ def run_general_policy(
 
 
 def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocessing.StandardScaler = None,
-               render=True, algo_is_sac=False, run_once=False):
+               render=True, algo_is_sac=False, run_once=False, get_watershed_info=False):
     """ Runs the policy on the environment, doing an infinite amount of episodes. The action space must be continuous.
         If needed, the states / observations can be scaled and the environment can be rendered at each step. Some
         logging is done on the console, to understand the behavior and results of the policy.
         """
+    solutions = {}
     with torch.no_grad():
         episode_number = 0
         episode_rewards = []
         last_rewards = []
         while True:
-            state, done, episode_reward, episode_length = env.reset(), False, 0, 0
+            if get_watershed_info:
+                state = env.reset(scenario_number=episode_number)
+            else:
+                state = env.reset()
+            done, episode_reward, episode_length = False, 0, 0
 
             # Update policy bounds
             # if algo_is_sac:
@@ -368,6 +373,8 @@ def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocess
             episode_rewards.append(episode_reward)
             last_rewards.append(reward)
 
+            solutions[episode_number] = (reward, list(action))
+
             print(f"Episode {episode_number}\t"
                   f"Reward: {episode_reward:.2f} \t"
                   f"Number of steps: {episode_length} \t"
@@ -378,6 +385,12 @@ def policy_run(env: gym.Env, policy: torch.nn.Module, scaler: sklearn.preprocess
 
             if run_once:
                 return
+            elif get_watershed_info and episode_number == 150:
+                return solutions
+
+
+
+
 
 
 def log_on_tensorboard(env, episode_number, reward, run_params, num_episode_steps, training_info, writer):

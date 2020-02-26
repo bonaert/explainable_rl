@@ -1,3 +1,5 @@
+import pickle
+
 import gym
 import gym_watershed
 import pyswarms as ps
@@ -21,8 +23,11 @@ if __name__ == "__main__":
 
     num_episodes = 1000
     fitness_list, optimal_values = [], []
-    for i in range(num_episodes):
-        env.reset()
+
+    solutions = {}
+
+    for i in range(150):
+        env.reset(scenario_number=i)
 
         # Using the more advanced PSO doesn't change anything
         # optimizer = ps.single.GeneralOptimizerPSO(
@@ -43,10 +48,19 @@ if __name__ == "__main__":
 
         fitness_list.append(-optimum_fitness)
         optimal_values.append(optimal_vars)
-        print(f"Fitness: {-optimum_fitness:.3f}\t"
+
+        solutions[i] = (-optimum_fitness, optimal_vars)
+
+        print(f"Iteration: {i}\t"
+              f"Fitness: {-optimum_fitness:.3f}\t"
               f"Optimal values: {[round(x, 3) for x in optimal_vars]}\t"
               f"Average Fitness: {np.mean(fitness_list):.2f} +- {np.std(fitness_list):.2f}")
 
     print(f"Average Fitness: {np.mean(fitness_list):.2f} +- {np.std(fitness_list):.2f}")
+
+    print(solutions)
+
+    with open("/home/greg/MEGAsync/aVUB/Memoire/thesisgregorybonaert/notebooks/watershed_pso.pickled", 'wb') as f:
+        pickle.dump(solutions, f)
 
     env.close()

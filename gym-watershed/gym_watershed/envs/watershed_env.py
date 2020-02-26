@@ -186,10 +186,14 @@ class WatershedEnv(gym.Env):
         self.x = np.zeros(6)  # To make pylint happy and get better auto-completion
         self.reinitialise_state()
 
-    def setup_environment_parameters(self):
+    def setup_environment_parameters(self, scenario_number: int = None):
         # "Q1 and Q2 represent the monthly inflows of water into respectively
         # the mainstream and tributary (in L^3)"
-        self.scenario_number = random.randint(0, self.number_of_scenarios - 1)
+        if scenario_number is None:
+            self.scenario_number = random.randint(0, self.number_of_scenarios - 1)
+        else:
+            self.scenario_number = scenario_number
+
         self.step_number_one_hot = np.zeros(self.number_of_scenarios)
         self.step_number_one_hot[self.scenario_number] = 1
 
@@ -354,11 +358,11 @@ class WatershedEnv(gym.Env):
         info = {}
         return observation, reward, done, info
 
-    def reset(self):
+    def reset(self, scenario_number: int = None):
         """ Reset the environment to its initial values """
         self.step_number = 0
 
-        self.setup_environment_parameters()
+        self.setup_environment_parameters(scenario_number)
 
         # Reset state to random values
         self.reinitialise_state()
