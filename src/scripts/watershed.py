@@ -101,10 +101,10 @@ if __name__ == "__main__":
         value_estimator2=sac_value_estimator2,
         value_estimator1_target=copy.deepcopy(sac_value_estimator1),
         value_estimator2_target=copy.deepcopy(sac_value_estimator2),
-        policy_optimizer=Adam(sac_policy.parameters(), lr=1e-3),  # Same LR for both policy and value
-        value_optimizer=Adam(value_parameters, lr=1e-3),
+        policy_optimizer=Adam(sac_policy.parameters(), lr=1e-4),  # Same LR for both policy and value
+        value_optimizer=Adam(value_parameters, lr=1e-4),
         replay_buffer_size=1_000_000,
-        batch_size=100,
+        batch_size=64,
         polyak=0.995,
         num_random_action_steps=1000,
         alpha=0.2,

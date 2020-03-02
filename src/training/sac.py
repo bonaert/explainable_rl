@@ -218,7 +218,7 @@ def sac_train(
                 log_prob = -1
 
             # To be sure that actions are in the action space (see watershed.py)
-            # action = np.clip(action, env.action_space.low, env.action_space.high)
+            action = np.clip(action, env.action_space.low, env.action_space.high)
 
             # For debugging, log the Q-values
             if run_params.use_tensorboard:
