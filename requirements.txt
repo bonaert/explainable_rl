@@ -1,3 +1,4 @@
+tensorboardX
 pyswarm
 pyswarms
 joblib
