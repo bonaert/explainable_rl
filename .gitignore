@@ -24,3 +24,5 @@ docs/
 /notebooks/.ipynb_checkpoints/
 
 /efficient-hrl/.git.backup/
+/data-efficient-hrl/logs/
+/data-efficient-hrl/.git2/
