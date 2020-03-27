@@ -25,6 +25,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from datetime import datetime
+
 import tensorflow as tf
 
 slim = tf.contrib.slim
@@ -82,11 +84,11 @@ def get_evaluate_checkpoint_fn(master, output_dir, eval_step_fns,
     def evaluate_checkpoint(checkpoint_path):
         """Performs a one-time evaluation of the given checkpoint.
 
-    Args:
-      checkpoint_path: Checkpoint to evaluate.
-    Returns:
-      True if the evaluation process should stop
-    """
+        Args:
+          checkpoint_path: Checkpoint to evaluate.
+        Returns:
+          True if the evaluation process should stop
+        """
         restore_fn = tf.contrib.framework.assign_from_checkpoint_fn(
             checkpoint_path,
             uvf_utils.get_all_vars(),
@@ -157,9 +159,7 @@ def get_evaluate_checkpoint_fn(master, output_dir, eval_step_fns,
                         env_base._gym_env.reset_model()  # pylint: disable=protected-access
                     else:
                         env_base._gym_env.wrapped_env.reset_model()
-                video_filename = os.path.join(output_dir, 'videos',
-                                              '%s_step_%d.mp4' % (eval_tag,
-                                                                  global_step))
+                video_filename = os.path.join('./videos', str(datetime.now()), '%s_step_%d.mp4' % (eval_tag, global_step))
                 eval_utils.capture_video(sess, eval_step, env_base,
                                          max_steps_per_episode * num_episodes_videos,
                                          video_filename, video_settings,
@@ -356,26 +356,9 @@ def evaluate(checkpoint_dir,
     4) Optionally, Define the evaluate and checkpoint function
     5) Run the model with 1 checkpoint, many checkpoints and model, or no checkpoint (what's a checkpoint here?)
     """
-
-    # class Wrapper:
-    #     def __init__(self, env):
-    #         super(Wrapper, self).__init__()
-    #         self._env = env
-    #
-    #     def __getattr__(self, name):
-    #         return getattr(self._env, name)
-    #
-    #     def step(self, action):
-    #         res = self._env.step(action)
-    #         return res
-    #
-    # environment = Wrapper(environment)
-
     tf_env = create_maze_env.TFPyEnvironment(environment)
     observation_spec = [tf_env.observation_spec()]
     action_spec = [tf_env.action_spec()]
-
-
 
     assert max_steps_per_episode, 'max_steps_per_episode need to be set'
 
@@ -425,9 +408,7 @@ def evaluate(checkpoint_dir,
         uvf_agent.set_meta_agent(meta_agent if meta else None)
         for mode in eval_modes:
             # wrap environment
-            wrapped_environment = uvf_agent.get_env_base_wrapper(
-                environment, mode=mode)
-
+            wrapped_environment = uvf_agent.get_env_base_wrapper(environment, mode=mode)
             action_wrapper = lambda agent_: agent_.action
             action_fn = action_wrapper(uvf_agent)
             meta_action_fn = action_wrapper(meta_agent)
@@ -474,7 +455,7 @@ def evaluate(checkpoint_dir,
         model_files = {
             k: v
             for k, v in model_files.items()
-            if k >= checkpoint_range[0] and k <= checkpoint_range[1]
+            if checkpoint_range[0] <= k <= checkpoint_range[1]
         }
         tf.logging.info('Evaluating %d policies at %s',
                         len(model_files), checkpoint_dir)

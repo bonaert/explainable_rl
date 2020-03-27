@@ -302,6 +302,7 @@ def sample_best_meta_actions(state_reprs, next_state_reprs, prev_meta_actions,
                   tf.range(prev_meta_actions.shape[0], dtype=tf.int64)], -1))
     return actions
 
+
 @gin.configurable
 def train_uvf(train_dir,
               environment=None,

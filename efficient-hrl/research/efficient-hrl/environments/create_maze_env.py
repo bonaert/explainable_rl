@@ -71,8 +71,14 @@ def create_maze_env(env_name=None, top_down_view=False):
         'maze_size_scaling': maze_size_scaling
     }
     gym_env = cls(**gym_mujoco_kwargs)
+    gym_env.metadata = {
+        'render.modes': ['human', 'rgb_array', 'depth_array']
+    }
     gym_env.reset()
     wrapped_env = gym_wrapper.GymWrapper(gym_env)
+
+
+
     return wrapped_env
 
 

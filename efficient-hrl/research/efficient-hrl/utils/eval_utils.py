@@ -20,11 +20,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pickle
 import time
+from copy import deepcopy
+from datetime import datetime
 
 import numpy as np
 import tensorflow as tf
 import gin.tf
+
+from monitor import Monitor
 
 logging = tf.logging
 
@@ -38,8 +43,7 @@ def evaluate_checkpoint_repeatedly(checkpoint_dir,
                                    timeout_fn=None):
     """Evaluates a checkpointed model at a set interval."""
     if max_number_of_evaluations is not None and max_number_of_evaluations <= 0:
-        raise ValueError(
-            '`max_number_of_evaluations` must be either None or a positive number.')
+        raise ValueError('`max_number_of_evaluations` must be either None or a positive number.')
 
     number_of_evaluations = 0
     for checkpoint_path in tf.contrib.training.checkpoints_iterator(
@@ -50,7 +54,9 @@ def evaluate_checkpoint_repeatedly(checkpoint_dir,
         retries = 3
         for _ in range(retries):
             try:
-                should_stop = evaluate_checkpoint_fn(checkpoint_path)
+                tf.logging.info("\tNumber of evaluations %d", number_of_evaluations)
+                number_of_evaluations += 1
+                evaluate_checkpoint_fn(checkpoint_path)
                 break
             except tf.errors.DataLossError as e:
                 logging.warn(
@@ -59,6 +65,9 @@ def evaluate_checkpoint_repeatedly(checkpoint_dir,
                     'Retrying...'
                 )
                 time.sleep(2.0)
+
+        if max_number_of_evaluations is not None and number_of_evaluations >= max_number_of_evaluations:
+            return
 
 
 def compute_model_loss(sess, model_rollout_fn, states, actions):
@@ -74,22 +83,21 @@ def compute_model_loss(sess, model_rollout_fn, states, actions):
     return preds, losses
 
 
-def compute_average_reward(sess, env_base, step_fn, gamma, num_steps,
-                           num_episodes):
+def compute_average_reward(sess, env_base, step_fn, gamma, num_steps, num_episodes):
     """Computes the discounted reward for a given number of steps.
 
-  Args:
-    sess: The tensorflow session.
-    env_base: A python environment.
-    step_fn: A function that takes in `sess` and returns a list of
-      [state, action, reward, discount, transition_type] values.
-    gamma: discounting factor to apply to the reward.
-    num_steps: number of steps to compute the reward over.
-    num_episodes: number of episodes to average the reward over.
-  Returns:
-    average_reward: a scalar of discounted reward.
-    last_reward: last reward received.
-  """
+    Args:
+        sess: The tensorflow session.
+        env_base: A python environment.
+        step_fn: A function that takes in `sess` and returns a list of
+          [state, action, reward, discount, transition_type] values.
+        gamma: discounting factor to apply to the reward.
+        num_steps: number of steps to compute the reward over.
+        num_episodes: number of episodes to average the reward over.
+    Returns:
+        average_reward: a scalar of discounted reward.
+        last_reward: last reward received.
+    """
     average_reward = 0
     average_last_reward = 0
     average_meta_reward = 0
@@ -97,27 +105,32 @@ def compute_average_reward(sess, env_base, step_fn, gamma, num_steps,
     average_success = 0.
     states, actions = None, None
     for i in range(num_episodes):
+        # Restart episode
         env_base.end_episode()
         env_base.begin_episode()
-        (reward, last_reward, meta_reward, last_meta_reward,
-         states, actions) = compute_reward(
-            sess, step_fn, gamma, num_steps)
+
+        # Get episode info
+        reward, last_reward, meta_reward, last_meta_reward, states, actions = compute_reward(sess, step_fn, gamma, num_steps)
         s_reward = last_meta_reward  # Navigation
         success = (s_reward > -5.0)  # When using diff=False
+
         logging.info('Episode = %d, reward = %s, meta_reward = %f, '
                      'last_reward = %s, last meta_reward = %f, success = %s',
                      i, reward, meta_reward, last_reward, last_meta_reward,
                      success)
+
         average_reward += reward
         average_last_reward += last_reward
         average_meta_reward += meta_reward
         average_last_meta_reward += last_meta_reward
         average_success += success
+
     average_reward /= num_episodes
     average_last_reward /= num_episodes
     average_meta_reward /= num_episodes
     average_last_meta_reward /= num_episodes
     average_success /= num_episodes
+
     return (average_reward, average_last_reward,
             average_meta_reward, average_last_meta_reward,
             average_success,
@@ -127,16 +140,16 @@ def compute_average_reward(sess, env_base, step_fn, gamma, num_steps,
 def compute_reward(sess, step_fn, gamma, num_steps):
     """Computes the discounted reward for a given number of steps.
 
-  Args:
-    sess: The tensorflow session.
-    step_fn: A function that takes in `sess` and returns a list of
-      [state, action, reward, discount, transition_type] values.
-    gamma: discounting factor to apply to the reward.
-    num_steps: number of steps to compute the reward over.
-  Returns:
-    reward: cumulative discounted reward.
-    last_reward: reward received at final step.
-  """
+    Args:
+        sess: The tensorflow session.
+        step_fn: A function that takes in `sess` and returns a list of
+          [state, action, reward, discount, transition_type] values.
+        gamma: discounting factor to apply to the reward.
+        num_steps: number of steps to compute the reward over.
+    Returns:
+        reward: cumulative discounted reward.
+        last_reward: reward received at final step.
+    """
 
     total_reward = 0
     total_meta_reward = 0
@@ -150,5 +163,43 @@ def compute_reward(sess, step_fn, gamma, num_steps):
         gamma_step *= gamma
         states.append(state)
         actions.append(action)
-    return (total_reward, reward, total_meta_reward, meta_reward,
-            states, actions)
+    return total_reward, reward, total_meta_reward, meta_reward, states, actions
+
+
+def save_values_for_one_episode(sess, env_base, step_fn, gamma, max_steps_per_episode):
+    # Restart episode
+    env_base.end_episode()
+    env_base.begin_episode()
+
+    total_reward = 0
+    total_meta_reward = 0
+    gamma_step = 1
+    states = []
+    actions = []
+
+    for _ in range(max_steps_per_episode):
+        state, action, transition_type, reward, meta_reward, discount, _, _ = step_fn(sess)
+        total_reward += reward * gamma_step * discount
+        total_meta_reward += meta_reward * gamma_step * discount
+        gamma_step *= gamma
+        states.append(state)
+        actions.append(action)
+
+    with open('serialized/states.txt', 'wb') as s_file, open('serialized/actions.txt', 'wb') as a_file:
+        pickle.dump(states, s_file)
+        pickle.dump(actions, a_file)
+
+
+
+
+
+def capture_video(sess, eval_step, env_base, num_steps, video_filename, video_settings, reset_every):
+    # Restart episode
+    # env_base.end_episode()
+    # env_base.begin_episode()
+
+    # Get episode info
+    env_base._gym_env = Monitor(env_base._gym_env, video_filename)
+    for _ in range(num_steps):
+        eval_step(sess)
+
