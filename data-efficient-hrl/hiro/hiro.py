@@ -205,7 +205,7 @@ class Manager:
     def __init__(self, state_dim, goal_dim, action_dim, actor_lr,
                  critic_lr, candidate_goals, correction=True,
                  scale=10, actions_norm_reg=0, policy_noise=0.2,
-                 noise_clip=0.5):
+                 noise_clip=0.5, should_reach_subgoal=False, subgoal_dist_cost_cf=1):
         self.scale = scale
         self.actor = ManagerActor(state_dim, goal_dim, action_dim, scale=scale)
         self.actor_target = ManagerActor(state_dim, goal_dim, action_dim, scale=scale)
@@ -221,6 +221,9 @@ class Manager:
                                                  weight_decay=0.0001)
 
         self.action_norm_reg = 0
+
+        self.should_reach_subgoal = should_reach_subgoal
+        self.subgoal_dist_cost_cf = subgoal_dist_cost_cf
 
         if torch.cuda.is_available():
             self.actor = self.actor.cuda()
@@ -340,6 +343,7 @@ class Manager:
         # print(candidates[0, max_indices[0]])
 
         # Return the goals that maximize the log(probabiliy) of the actions
+        # Shape (batch_size, subgoal_dim)
         return candidates[np.arange(batch_size), max_indices]
 
     def train(self, controller_policy, replay_buffer, iterations, batch_size=100, discount=0.99, tau=0.005):
@@ -347,6 +351,10 @@ class Manager:
         avg_act_loss, avg_crit_loss = 0., 0.
         for it in range(iterations):
             # Sample replay buffer
+            # The manager reward is the sum of the rewards of the actions done while that subgoal was active
+            # This total reward is scaled by a factor. So the manager tries to pick subgoals that maximize the
+            # reward that is collected, and the low level controller tries to get as close as possible to the
+            # desired end state; and as fast as possible.
             state, final_state, goal, subgoal_original, mgr_reward, done, observations, actions = replay_buffer.sample(batch_size)
             if self.correction:
                 subgoal = self.off_policy_corrections(controller_policy, batch_size, subgoal_original, observations, actions)
@@ -385,6 +393,15 @@ class Manager:
             #    Note that each network has a target network which is updated using Polyak averaging!
             #    So in total there's 4 networks (Q1, Q2, Q1_target, Q2_target)
             critic_loss = self.criterion(current_Q1, target_Q_no_grad) + self.criterion(current_Q2, target_Q_no_grad)
+
+            # 4b) Optionally add the component that increases the loss if the low level controller couldn't reach
+            #     the subgoal. This loss is a measure of the distance. We need to compute the subgoal at the last step
+            #     This is simple, we can use the formula g' = s + g - s'. We can then subgoal norm as the distance cost.
+            if self.should_reach_subgoal:
+                # Shape (batch_size, subgoal_dim)
+                final_subgoal = state + subgoal - final_state
+                # The loss if the sum of the norms (for all meta-transition in the batch)
+                critic_loss += self.subgoal_dist_cost_cf * final_subgoal.norm(dim=-1).sum()
 
             # 5) Optimize the critic
             self.critic_optimizer.zero_grad()

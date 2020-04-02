@@ -49,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ctrl_noise_sigma", default=1., type=float)  # Std of Gaussian exploration noise
     parser.add_argument("--man_noise_sigma", default=1., type=float)  # Std of Gaussian exploration noise
 
+    # --- My parameters --- #
+    # Punish the meta controller for picking action the low level controller can't complete
+    parser.add_argument("--should_reach_subgoal", action="store_true")
+    # Coefficient for that loss term
+    parser.add_argument("--man_subgoal_dist_cf", default=1., type=float)
+
     return parser
 
 

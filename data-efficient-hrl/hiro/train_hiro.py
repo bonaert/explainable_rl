@@ -118,7 +118,9 @@ def run_hiro(args):
         critic_lr=args.man_crit_lr,
         candidate_goals=args.candidate_goals,
         correction=not args.no_correction,
-        scale=man_scale
+        scale=man_scale,
+        should_reach_subgoal=args.should_reach_subgoal,
+        subgoal_dist_cost_cf=args.man_subgoal_dist_cf
     )
     calculate_controller_reward = get_reward_function(controller_goal_dim)
 

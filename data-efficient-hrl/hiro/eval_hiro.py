@@ -66,7 +66,9 @@ def get_env_and_policy(args):
         critic_lr=args.man_crit_lr,
         candidate_goals=args.candidate_goals,
         correction=not args.no_correction,
-        scale=man_scale
+        scale=man_scale,
+        should_reach_subgoal=args.should_reach_subgoal,
+        subgoal_dist_cost_cf=args.man_subgoal_dist_cf
     )
     # Reload weights from file
     output_dir = os.path.join(args.log_dir, args.log_file)
