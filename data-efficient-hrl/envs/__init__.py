@@ -97,18 +97,16 @@ class EnvWithGoal(object):
 
 
 def run_environment(env_name, episode_length, num_episodes):
-    env = EnvWithGoal(
-            create_maze_env.create_maze_env(env_name),
-            env_name)
+    env = EnvWithGoal(create_maze_env.create_maze_env(env_name), env_name)
 
     def action_fn(obs):
         action_space = env.action_space
         action_space_mean = (action_space.low + action_space.high) / 2.0
         action_space_magn = (action_space.high - action_space.low) / 2.0
         random_action = (action_space_mean +
-            action_space_magn *
-            np.random.uniform(low=-1.0, high=1.0,
-            size=action_space.shape))
+                         action_space_magn *
+                         np.random.uniform(low=-1.0, high=1.0,
+                                           size=action_space.shape))
 
         return random_action
 
@@ -135,8 +133,8 @@ def run_environment(env_name, episode_length, num_episodes):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env_name", default="AntEnv", type=str)               
-    parser.add_argument("--episode_length", default=500, type=int)      
+    parser.add_argument("--env_name", default="AntEnv", type=str)
+    parser.add_argument("--episode_length", default=500, type=int)
     parser.add_argument("--num_episodes", default=100, type=int)
 
     args = parser.parse_args()

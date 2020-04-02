@@ -116,7 +116,7 @@ def evaluate_policy(env, writer, manager_policy, controller_policy,
             while not done:
                 if step_count % manager_propose_frequency == 0:
                     print("Step %d: The manager sampled a goal!" % step_count)
-                    subgoal = manager_policy.sample_goal(state, goal)
+                    subgoal = manager_policy.sample_subgoal(state, goal)
 
                 step_count += 1
                 global_steps += 1
@@ -197,7 +197,7 @@ def evaluate_policy(env, writer, manager_policy, controller_policy,
             while not done:
                 if step_count % manager_propose_frequency == 0:
                     print("Step %d: The manager sampled a goal!" % step_count)
-                    subgoal = manager_policy.sample_goal(state, goal)
+                    subgoal = manager_policy.sample_subgoal(state, goal)
 
                 step_count += 1
                 global_steps += 1

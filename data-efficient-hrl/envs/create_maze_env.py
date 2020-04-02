@@ -17,7 +17,6 @@ from .ant_maze_env import AntMazeEnv
 
 
 def create_maze_env(env_name=None):
-    maze_id = None
     if env_name.startswith('AntMaze'):
         maze_id = 'Maze'
     elif env_name.startswith('AntPush'):

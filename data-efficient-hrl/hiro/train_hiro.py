@@ -50,6 +50,7 @@ def run_hiro(args):
         # We'll be running on one of the various Ant envs
         env = EnvWithGoal(create_maze_env(args.env_name), args.env_name)
 
+        # TODO: Where to these magic numbers come from?
         low = np.array((-10, -10, -0.5, -1, -1, -1, -1,
                         -0.5, -0.3, -0.5, -0.3, -0.5, -0.3, -0.5, -0.3))
         high = -low
@@ -92,6 +93,11 @@ def run_hiro(args):
 
     max_action = float(env.action_space.high[0])
 
+    # The goal dim is smaller than the state dim. This is very strange and doesn't seem to be compatible with
+    # the paper and the formula g' = s + g - s' (since the states have different dimensions than the goals)
+    # This works because the goal is a subpart of the state, so the update rule they actually use is:
+    #    g' = s[:goal_dim] + g - s'[:goal_dim]
+    # TODO: why is the goal a subpart of the state instead of the whole state?
     # Initialize policy, replay buffers
     controller_policy = hiro.Controller(
         state_dim=state_dim,
@@ -156,6 +162,7 @@ def run_hiro(args):
     evaluations = []
 
     while total_timesteps < args.max_timesteps:
+        # Periodically save everything (controller, manager, buffers and total time steps)
         if args.save_every > 0 and (total_timesteps + 1) % args.save_every == 0:
             print("Saving")
             controller_policy.save(output_dir)
@@ -165,6 +172,9 @@ def run_hiro(args):
             with open(os.path.join(output_dir, "iter.pkl"), "wb") as f:
                 pkl.dump(total_timesteps, f)
 
+        # If we finished the episode, we might have to (1) train the controller (2) evaluate the current policy
+        # and (3) process final state/obs, store manager transition, if it was not just created
+        # We train the controller at the end of every episode and the manager every X timesteps (not episodes!)
         if done:
             if total_timesteps != 0 and not just_loaded:
                 # print('Training Controller...')
@@ -179,15 +189,17 @@ def run_hiro(args):
                 writer.add_scalar('data/controller_ep_rew', episode_reward, total_timesteps)
                 writer.add_scalar('data/manager_ep_rew', manager_transition[4], total_timesteps)
 
-                # Train Manager
+                # Train Manager perdiocally
                 if timesteps_since_manager >= args.train_manager_freq:
                     # print('Training Manager...')
-
                     timesteps_since_manager = 0
-                    man_act_loss, man_crit_loss = manager_policy.train(controller_policy, manager_buffer,
-                                                                       ceil(
-                                                                           episode_timesteps / args.train_manager_freq),
-                                                                       args.man_batch_size, args.discount, args.man_tau)
+                    man_act_loss, man_crit_loss = manager_policy.train(
+                        controller_policy,
+                        manager_buffer,
+                        ceil(episode_timesteps / args.train_manager_freq),
+                        args.man_batch_size, args.discount,
+                        args.man_tau
+                    )
 
                     writer.add_scalar('data/manager_actor_loss', man_act_loss, total_timesteps)
                     writer.add_scalar('data/manager_critic_loss', man_crit_loss, total_timesteps)
@@ -195,9 +207,10 @@ def run_hiro(args):
                 # Evaluate episode
                 if timesteps_since_eval >= args.eval_freq:
                     timesteps_since_eval = 0
-                    avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish = \
-                        evaluate_policy(env, writer, manager_policy, controller_policy, calculate_controller_reward,
-                                        args.ctrl_rew_scale, args.manager_propose_freq, len(evaluations))
+                    avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish = evaluate_policy(
+                        env, writer, manager_policy, controller_policy, calculate_controller_reward,
+                        args.ctrl_rew_scale, args.manager_propose_freq, len(evaluations)
+                    )
 
                     writer.add_scalar('eval/avg_ep_rew', avg_ep_rew, total_timesteps)
                     writer.add_scalar('eval/avg_controller_rew', avg_controller_rew, total_timesteps)
@@ -213,11 +226,15 @@ def run_hiro(args):
                     np.save("./results/%s" % file_name, evaluations)
 
                 # Process final state/obs, store manager transition, if it was not just created
-                if len(manager_transition[-2]) != 1:
-                    manager_transition[1] = state
-                    manager_transition[5] = float(True)
+                if len(manager_transition[-2]) != 1:  # If there's more than 1 state in the transition
+                    # Manager transitions are a list of the form
+                    # [initial state, final state, goal, subgoal, manager reward, done, states, actions]
+                    manager_transition[1] = state  # Store the final state
+                    manager_transition[5] = float(True)  # Set done to true
 
                     # Every manager transition should have same length of sequences
+                    # TODO: this suggests one difficulty of not changing subgoals with a specific period:
+                    # TODO: the input dimensions will vary! figure out how to deal with this
                     if len(manager_transition[-2]) <= args.manager_propose_freq:
                         while len(manager_transition[-2]) <= args.manager_propose_freq:
                             manager_transition[-1].append(np.inf)
@@ -236,8 +253,8 @@ def run_hiro(args):
             just_loaded = False
             episode_num += 1
 
-            # Create new manager transition
-            subgoal = manager_policy.sample_goal(state, goal)
+            # Create new manager transition (sample new subgoal)
+            subgoal = manager_policy.sample_subgoal(state, goal)
 
             timesteps_since_subgoal = 0
 
@@ -277,14 +294,10 @@ def run_hiro(args):
 
         # Store low level transition
         if args.inner_dones:
-            ctrl_done = done or timesteps_since_subgoal % \
-                        args.manager_propose_freq == 0
+            ctrl_done = done or timesteps_since_subgoal % args.manager_propose_freq == 0
         else:
             ctrl_done = done
-        controller_buffer.add(
-            (state, next_state, controller_goal, action,
-             controller_reward, float(ctrl_done), [], [])
-        )
+        controller_buffer.add((state, next_state, controller_goal, action, controller_reward, float(ctrl_done), [], []))
 
         # Update state parameters
         state = next_state
@@ -297,6 +310,7 @@ def run_hiro(args):
         timesteps_since_manager += 1
         timesteps_since_subgoal += 1
 
+        # Every X timesteps, store manager transition in buffer and pick a new subgoal
         if timesteps_since_subgoal % args.manager_propose_freq == 0:
             # Finish, add transition
             manager_transition[1] = state
@@ -304,7 +318,7 @@ def run_hiro(args):
 
             manager_buffer.add(manager_transition)
 
-            subgoal = manager_policy.sample_goal(state, goal)
+            subgoal = manager_policy.sample_subgoal(state, goal)
             subgoal = man_noise.perturb_action(subgoal, max_action=man_scale)
 
             # Reset number of timesteps since we sampled a subgoal
@@ -322,4 +336,4 @@ def run_hiro(args):
         controller_policy.save(file_name + '_controller', directory="./pytorch_models")
         manager_policy.save(file_name + '_manager', directory="./pytorch_models")
 
-    np.save("./results/%s" % (file_name), evaluations)
+    np.save("./results/%s" % file_name, evaluations)

@@ -1,10 +1,12 @@
+from typing import Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
 
-def var(tensor):
+def var(tensor: torch.Tensor) -> Variable:
     if torch.cuda.is_available():
         return Variable(tensor).cuda()
     else:
@@ -21,7 +23,7 @@ class Actor(nn.Module):
 
         self.max_action = max_action
 
-    def forward(self, x, g):
+    def forward(self, x, g) -> torch.Tensor:
         x = F.relu(self.l1(torch.cat([x, g], 1)))
         x = F.relu(self.l2(x))
         x = self.max_action * torch.tanh(self.l3(x))
@@ -59,7 +61,7 @@ class Critic(nn.Module):
         self.l5 = nn.Linear(300, 300)
         self.l6 = nn.Linear(300, 1)
 
-    def forward(self, x, g, u):
+    def forward(self, x, g, u) -> Tuple[torch.Tensor, torch.Tensor]:
         xu = torch.cat([x, g, u], 1)
 
         x1 = F.relu(self.l1(xu))
@@ -71,7 +73,7 @@ class Critic(nn.Module):
         x2 = self.l6(x2)
         return x1, x2
 
-    def Q1(self, x, g, u):
+    def Q1(self, x, g, u) -> torch.Tensor:
         xu = torch.cat([x, g, u], 1)
 
         x1 = F.relu(self.l1(xu))
@@ -85,11 +87,10 @@ class ControllerActor(nn.Module):
         super(ControllerActor, self).__init__()
         if scale is None:
             scale = torch.ones(state_dim)
-        self.scale = nn.Parameter(torch.tensor(scale).float(),
-                                  requires_grad=False)
+        self.scale = nn.Parameter(torch.tensor(scale).float(), requires_grad=False)
         self.actor = Actor(state_dim, goal_dim, action_dim, 1)
 
-    def forward(self, x, g):
+    def forward(self, x, g) -> torch.Tensor:
         return self.scale * self.actor(x, g)
 
 
@@ -99,10 +100,10 @@ class ControllerCritic(nn.Module):
 
         self.critic = Critic(state_dim, goal_dim, action_dim)
 
-    def forward(self, x, sg, u):
+    def forward(self, x, sg, u) -> torch.Tensor:
         return self.critic(x, sg, u)
 
-    def Q1(self, x, sg, u):
+    def Q1(self, x, sg, u) -> torch.Tensor:
         return self.critic.Q1(x, sg, u)
 
 
@@ -114,7 +115,7 @@ class ManagerActor(nn.Module):
         self.scale = nn.Parameter(torch.tensor(scale).float(), requires_grad=False)
         self.actor = Actor(state_dim, goal_dim, action_dim, 1)
 
-    def forward(self, x, g):
+    def forward(self, x, g) -> torch.Tensor:
         return self.scale * self.actor(x, g)
 
 
@@ -123,8 +124,8 @@ class ManagerCritic(nn.Module):
         super(ManagerCritic, self).__init__()
         self.critic = Critic(state_dim, goal_dim, action_dim)
 
-    def forward(self, x, g, u):
+    def forward(self, x, g, u) -> torch.Tensor:
         return self.critic(x, g, u)
 
-    def Q1(self, x, g, u):
+    def Q1(self, x, g, u) -> torch.Tensor:
         return self.critic.Q1(x, g, u)

@@ -14,63 +14,61 @@
 # ==============================================================================
 
 """Adapted from rllab maze_env_utils.py."""
-import numpy as np
-import math
 
 
 class Move(object):
-  X = 11
-  Y = 12
-  Z = 13
-  XY = 14
-  XZ = 15
-  YZ = 16
-  XYZ = 17
+    X = 11
+    Y = 12
+    Z = 13
+    XY = 14
+    XZ = 15
+    YZ = 16
+    XYZ = 17
 
 
 def can_move_x(movable):
-  return movable in [Move.X, Move.XY, Move.XZ, Move.XYZ]
+    return movable in [Move.X, Move.XY, Move.XZ, Move.XYZ]
 
 
 def can_move_y(movable):
-  return movable in [Move.Y, Move.XY, Move.YZ, Move.XYZ]
+    return movable in [Move.Y, Move.XY, Move.YZ, Move.XYZ]
 
 
 def can_move_z(movable):
-  return movable in [Move.Z, Move.XZ, Move.YZ, Move.XYZ]
+    return movable in [Move.Z, Move.XZ, Move.YZ, Move.XYZ]
 
 
 def can_move(movable):
-  return can_move_x(movable) or can_move_y(movable) or can_move_z(movable)
+    return can_move_x(movable) or can_move_y(movable) or can_move_z(movable)
 
 
 def construct_maze(maze_id='Maze'):
-  if maze_id == 'Maze':
-    structure = [
-        [1, 1, 1, 1, 1],
-        [1, 'r', 0, 0, 1],
-        [1, 1, 1, 0, 1],
-        [1, 0, 0, 0, 1],
-        [1, 1, 1, 1, 1],
-    ]
-  elif maze_id == 'Push':
-    structure = [
-        [1, 1,  1,  1,   1],
-        [1, 0, 'r', 1,   1],
-        [1, 0,  Move.XY, 0,  1],
-        [1, 1,  0,  1,   1],
-        [1, 1,  1,  1,   1],
-    ]
-  elif maze_id == 'Fall':
-    structure = [
-        [1, 1,   1,  1],
-        [1, 'r', 0,  1],
-        [1, 0,   Move.YZ,  1],
-        [1, -1, -1,  1],
-        [1, 0,   0,  1],
-        [1, 1,   1,  1],
-    ]
-  else:
-      raise NotImplementedError('The provided MazeId %s is not recognized' % maze_id)
+    if maze_id == 'Maze':
+        structure = [
+            [1, 1, 1, 1, 1],
+            [1, 'r', 0, 0, 1],
+            [1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1],
+        ]
+    elif maze_id == 'Push':
+        structure = [
+            [1, 1, 1, 1, 1],
+            [1, 0, 'r', 1, 1],
+            [1, 0, Move.XY, 0, 1],
+            [1, 1, 0, 1, 1],
+            [1, 1, 1, 1, 1],
+        ]
+    elif maze_id == 'Fall':
+        structure = [
+            [1, 1, 1, 1],
+            [1, 'r', 0, 1],
+            [1, 0, Move.YZ, 1],
+            [1, -1, -1, 1],
+            [1, 0, 0, 1],
+            [1, 1, 1, 1],
+        ]
+    else:
+        raise NotImplementedError('The provided MazeId %s is not recognized' % maze_id)
 
-  return structure
+    return structure
