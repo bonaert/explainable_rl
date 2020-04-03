@@ -102,3 +102,7 @@ class OUNoise(object):
         dx = dx + self.sigma * np.random.randn(len(self.X))
         self.X = self.X + dx
         return (self.X + action).clip(-max_action, max_action)
+
+
+def has_nan_or_inf(res):
+    return np.isnan(res).any() or np.isinf(res).any()

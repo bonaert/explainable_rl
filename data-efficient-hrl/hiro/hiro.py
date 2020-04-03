@@ -4,6 +4,7 @@ import torch.nn as nn
 from torchvision import transforms
 
 from hiro.models import ControllerActor, ControllerCritic, ManagerActor, ManagerCritic
+from hiro.utils import has_nan_or_inf
 
 totensor = transforms.Compose([transforms.ToPILImage(), transforms.ToTensor()])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -97,6 +98,8 @@ class Controller:
         else:
             res = self.actor(states, subgoals)
 
+
+
         # one element + A actions -> 1 x A -> squueze() -> A :)
         # one element + 1 action -> 1 x 1 -> squeeze() -> () :(   (we want 1 instead of empty tuple as the shape)
         # N elements (batch) + A actions -> N x A -> squeeze -> N x A :)
@@ -105,6 +108,10 @@ class Controller:
         # last two cases nothing happens (as we want)
         if res.shape[0] == 1:
             res = res.squeeze(0)
+
+        if has_nan_or_inf(res):
+            raise Exception("Action has NaNs: %s" % res)
+
         return res
 
     def value_estimate(self, state, subgoal, action):
@@ -260,9 +267,13 @@ class Manager:
         goal = get_tensor(goal)
 
         if to_numpy:
-            return self.actor(state, goal).cpu().data.numpy().squeeze()
+            res = self.actor(state, goal).cpu().data.numpy().squeeze()
         else:
-            return self.actor(state, goal).squeeze()
+            res = self.actor(state, goal).squeeze()
+
+        if has_nan_or_inf(res):
+            raise Exception("Action has NaNs: %s" % res)
+        return res
 
     def value_estimate(self, state, goal, subgoal):
         return self.critic(state, goal, subgoal)
@@ -305,7 +316,10 @@ class Manager:
         # Shape: (batch_size, 10, subgoal_dim)
         candidates = np.concatenate([original_goal, diff_goal, random_goals], axis=1)
         observations = np.array(observations)[:, :-1, :]
-        actions = np.array(actions)
+        try:
+            actions = np.array(actions)
+        except Exception as e:
+            raise e
         seq_len = len(observations[0])
 
         # To make coding easier

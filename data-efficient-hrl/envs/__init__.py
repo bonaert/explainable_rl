@@ -10,6 +10,10 @@ def get_goal_sample_fn(env_name, evaluate):
     if env_name == "MountainCarContinuous-v0":
         # Taken from: https://github.com/openai/gym/blob/master/gym/envs/classic_control/continuous_mountain_car.py#L37
         return lambda: np.array([0.45, 0])
+    elif env_name == "LunarLanderContinuous-v2":
+        # Taken from: https://github.com/openai/gym/blob/master/gym/envs/box2d/lunar_lander.py
+        return lambda: np.array([1, 1])  # Non informative goal
+        # return lambda: np.array([0.45, 3.33333333333333333333])
     elif env_name == 'AntMaze':
         # NOTE: When evaluating (i.e. the metrics shown in the paper,
         # we use the commented out goal sampling function.    The uncommented
@@ -28,7 +32,9 @@ def get_goal_sample_fn(env_name, evaluate):
 
 def get_reward_fn(env_name):
     if env_name == 'MountainCarContinuous-v0':
-        return lambda obs, goal: -np.sum(np.square(obs - goal)) ** 0.5
+        return lambda obs, goal: -np.sum(np.square(obs[:2] - goal)) ** 0.5
+    elif env_name == 'LunarLanderContinuous-v2':
+        return lambda obs, goal: -np.sum(np.square(obs[:2] - goal)) ** 0.5
     elif env_name == 'AntMaze':
         return lambda obs, goal: -np.sum(np.square(obs[:2] - goal)) ** 0.5
     elif env_name == 'AntPush':

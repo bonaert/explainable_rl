@@ -9,6 +9,7 @@ import gym
 
 from tensorboardX import SummaryWriter
 
+import hiro.utils
 import hiro.utils as utils
 import hiro.hiro as hiro
 
@@ -40,10 +41,14 @@ def run_hiro(args):
         # env.env.reward_type = args.reward_type
         if args.env_name == "MountainCarContinuous-v0":
             env.distance_threshold = 0.1
+            min_obs, max_obs = env.base_env.observation_space.low, env.base_env.observation_space.high
+            man_scale = (max_obs - min_obs) / 2
         elif args.env_name == "LunarLanderContinuous-v2":
             env.distance_threshold = 0.1
-        min_obs, max_obs = env.base_env.observation_space.low, env.base_env.observation_space.high
-        man_scale = max_obs - min_obs
+            # Can't use the observation_space bounds directly, because those go from -inf to +inf
+            # So I just arbitrariliy picked the value 100 (no idea if this is good or not)
+            man_scale = np.ones(8) * 100
+
         controller_goal_dim = man_scale.shape[0]
         no_xy = False  # Can't just take out first dimensions; movement here is different than for ants.
     elif "-v" in args.env_name:
@@ -252,6 +257,15 @@ def run_hiro(args):
                     # TODO: the input dimensions will vary! figure out how to deal with this
                     if len(manager_transition[-2]) <= args.manager_propose_freq:
                         while len(manager_transition[-2]) <= args.manager_propose_freq:
+                            # TODO: the training code never deals with this
+                            # It somehow seems not to be a problem with AntMaze and MountainCar
+                            # but with LunarLander it fucks things up...
+                            # Hypothesis:
+                            # 1) MountainCar nevers reaches the end, so done is never True before
+                            # we did all the actions we could
+                            # 2) AntMaze should reach the end though... at least at the end of the training
+                            #    However, it doesn't trigger the exception. TODO: figure out why!
+
                             manager_transition[-1].append(np.inf)
                             manager_transition[-2].append(state)
 
@@ -291,6 +305,8 @@ def run_hiro(args):
         next_state = next_tup['observation']
 
         # Append low level sequence for off policy correction
+        if utils.has_nan_or_inf(action):
+            raise Exception()
         manager_transition[-1].append(action)
         manager_transition[-2].append(next_state)
 
