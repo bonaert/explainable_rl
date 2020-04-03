@@ -20,8 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hiro_only", action="store_true")  # Use HIRO without representation learning.
     parser.add_argument("--no_correction", action="store_true")  # Disable the hiro correction.
     parser.add_argument("--reward_type", default="dense")  # Whether to use sparse or dense rewards.
-    parser.add_argument("--inner_dones", action="store_true")  # Whether or not to insert a `done' after each
-    # meta-action terminates.
+    # Whether or not to insert a `done' after each meta-action terminates.
+    parser.add_argument("--inner_dones", action="store_true")
     # hiro Specific Params
     parser.add_argument("--manager_propose_freq", default=10, type=int)  # #of env. steps at which we propose subgoals
     parser.add_argument("--train_manager_freq", default=10, type=int)  # #of env. steps at which we train manager

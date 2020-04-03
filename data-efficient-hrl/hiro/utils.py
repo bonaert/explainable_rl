@@ -80,9 +80,9 @@ class NormalNoise(object):
         self.sigma = sigma
 
     def perturb_action(self, action, max_action=np.inf):
-        action = (action + np.random.normal(0, self.sigma,
-                                            size=action.shape[0])).clip(-max_action, max_action)
-
+        # If the action is a single number, the shape is an empty tuple. We deal with that special case here
+        dims = 1 if action.shape == tuple() else action.shape[0]
+        action = (action + np.random.normal(0, self.sigma, size=dims)).clip(-max_action, max_action)
         return action
 
 

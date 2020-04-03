@@ -33,7 +33,15 @@ def run_hiro(args):
     output_dir = os.path.join(args.log_dir, args.log_file)
     print("Logging in {}".format(output_dir))
 
-    if "-v" in args.env_name:
+    if args.env_name == "MountainCarContinuous-v0":
+        env = EnvWithGoal(gym.make(args.env_name), args.env_name)
+        # env.env.reward_type = args.reward_type
+        env.distance_threshold = 1
+        min_obs, max_obs = env.base_env.observation_space.low, env.base_env.observation_space.high
+        man_scale = max_obs - min_obs
+        controller_goal_dim = man_scale.shape[0]
+        no_xy = False  # Can't just take out first dimensions; movement here is different than for ants.
+    elif "-v" in args.env_name:
         env = gym.make(args.env_name)
         env.env.reward_type = args.reward_type
         env.distance_threshold = env.env.distance_threshold
