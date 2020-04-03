@@ -117,7 +117,7 @@ def evaluate_policy(env, writer, manager_policy, controller_policy,
             env_goals_achieved = 0
             while not done:
                 if step_count % manager_propose_frequency == 0:
-                    print("Step %d: The manager sampled a goal!" % step_count)
+                    # print("Step %d: The manager sampled a goal!" % step_count)
                     subgoal = manager_policy.sample_subgoal(state, goal)
 
                 step_count += 1
@@ -153,7 +153,7 @@ def evaluate_policy(env, writer, manager_policy, controller_policy,
 
                 avg_reward += reward
                 controller_reward = calculate_controller_reward(state, subgoal, new_state, ctrl_rew_scale)
-                print(controller_reward)
+                # print(controller_reward)
                 avg_controller_rew += controller_reward
 
                 state = new_state
@@ -198,7 +198,7 @@ def evaluate_policy(env, writer, manager_policy, controller_policy,
             env_goals_achieved = 0
             while not done:
                 if step_count % manager_propose_frequency == 0:
-                    print("Step %d: The manager sampled a goal!" % step_count)
+                    # print("Step %d: The manager sampled a goal!" % step_count)
                     subgoal = manager_policy.sample_subgoal(state, goal)
 
                 step_count += 1
@@ -234,7 +234,7 @@ def evaluate_policy(env, writer, manager_policy, controller_policy,
 
                 avg_reward += reward
                 controller_reward = calculate_controller_reward(state, subgoal, new_state, ctrl_rew_scale)
-                print(controller_reward)
+                # print(controller_reward)
                 avg_controller_rew += controller_reward
 
                 state = new_state

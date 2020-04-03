@@ -36,7 +36,7 @@ def run_hiro(args):
     if args.env_name == "MountainCarContinuous-v0":
         env = EnvWithGoal(gym.make(args.env_name), args.env_name)
         # env.env.reward_type = args.reward_type
-        env.distance_threshold = 1
+        env.distance_threshold = 0.1
         min_obs, max_obs = env.base_env.observation_space.low, env.base_env.observation_space.high
         man_scale = max_obs - min_obs
         controller_goal_dim = man_scale.shape[0]
