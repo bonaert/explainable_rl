@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 import torch
 import os
@@ -33,10 +35,13 @@ def run_hiro(args):
     output_dir = os.path.join(args.log_dir, args.log_file)
     print("Logging in {}".format(output_dir))
 
-    if args.env_name == "MountainCarContinuous-v0":
+    if args.env_name in ["MountainCarContinuous-v0", "LunarLanderContinuous-v2"]:
         env = EnvWithGoal(gym.make(args.env_name), args.env_name)
         # env.env.reward_type = args.reward_type
-        env.distance_threshold = 0.1
+        if args.env_name == "MountainCarContinuous-v0":
+            env.distance_threshold = 0.1
+        elif args.env_name == "LunarLanderContinuous-v2":
+            env.distance_threshold = 0.1
         min_obs, max_obs = env.base_env.observation_space.low, env.base_env.observation_space.high
         man_scale = max_obs - min_obs
         controller_goal_dim = man_scale.shape[0]
@@ -87,8 +92,8 @@ def run_hiro(args):
     writer = SummaryWriter(logdir=os.path.join(args.log_dir, args.log_file))
     # torch.cuda.set_device(0)
 
-    env_name = type(env).__name__
-    file_name = 'hiro_{}'.format(env_name)
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+    file_name = 'hiro_{}_{}'.format(args.env_name, current_time)
 
     # Set seeds
     env.seed(args.seed)
