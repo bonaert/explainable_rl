@@ -22,8 +22,6 @@ def get_tensor(z) -> torch.Tensor:
     else:
         return var(torch.FloatTensor(z.copy()))
 
-
-
 class Controller:
     def __init__(self, state_dim, goal_dim, action_dim, max_action, actor_lr,
                  critic_lr, ctrl_rew_type, repr_dim=15, no_xy=True,
@@ -95,9 +93,19 @@ class Controller:
         states = self.clean_obs(states, no_grad=no_grad)
 
         if to_numpy:
-            return self.actor(states, subgoals).cpu().data.numpy().squeeze()
+            res = self.actor(states, subgoals).cpu().data.numpy()
         else:
-            return self.actor(states, subgoals).squeeze()
+            res = self.actor(states, subgoals)
+
+        # one element + A actions -> 1 x A -> squueze() -> A :)
+        # one element + 1 action -> 1 x 1 -> squeeze() -> () :(   (we want 1 instead of empty tuple as the shape)
+        # N elements (batch) + A actions -> N x A -> squeeze -> N x A :)
+        # N elements (batch) + 1 action -> N x 1 -> squeeze -> N :(   (we want N x 1)
+        # So, in summary, we should only squeeze the first dimension! That way the first 2 cases work and in the
+        # last two cases nothing happens (as we want)
+        if res.shape[0] == 1:
+            res = res.squeeze(0)
+        return res
 
     def value_estimate(self, state, subgoal, action):
         state = self.clean_obs(get_tensor(state))
@@ -308,7 +316,7 @@ class Manager:
 
         # Reshape the actions, observations and goal so that they have shape (batch_size, *dim_element)
         true_actions = actions.reshape((new_batch_size,) + action_dim)
-        observations = observations.reshape((new_batch_size,) + obs_dim)
+        reshaped_observations = observations.reshape((new_batch_size,) + obs_dim)
         goal_shape = (new_batch_size, self.action_dim)
         # observations = get_obs_tensor(observations, sg_corrections=True)
 
@@ -322,7 +330,7 @@ class Manager:
             adjusted_subgoals = controller_policy.multi_subgoal_transition(observations, candidates[:, goal_num])
             adjusted_subgoals = adjusted_subgoals.reshape(*goal_shape)
             # 2. Compute the action the agent would have taken given the observations and the subgoals
-            policy_actions[goal_num] = controller_policy.select_action(observations, adjusted_subgoals)
+            policy_actions[goal_num] = controller_policy.select_action(reshaped_observations, adjusted_subgoals)
 
         # Compute the log(probability) of the actions for each candidate goal (for every batch)
         difference = (policy_actions - true_actions)
