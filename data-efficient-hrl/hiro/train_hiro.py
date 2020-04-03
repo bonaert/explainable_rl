@@ -105,7 +105,6 @@ def run_hiro(args):
     # the paper and the formula g' = s + g - s' (since the states have different dimensions than the goals)
     # This works because the goal is a subpart of the state, so the update rule they actually use is:
     #    g' = s[:goal_dim] + g - s'[:goal_dim]
-    # TODO: why is the goal a subpart of the state instead of the whole state?
     # Initialize policy, replay buffers
     controller_policy = hiro.Controller(
         state_dim=state_dim,
@@ -219,7 +218,8 @@ def run_hiro(args):
                     timesteps_since_eval = 0
                     avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish = evaluate_policy(
                         env, writer, manager_policy, controller_policy, calculate_controller_reward,
-                        args.ctrl_rew_scale, args.manager_propose_freq, len(evaluations)
+                        args.ctrl_rew_scale, args.manager_propose_freq, len(evaluations),
+                        render=args.render_in_eval
                     )
 
                     writer.add_scalar('eval/avg_ep_rew', avg_ep_rew, total_timesteps)

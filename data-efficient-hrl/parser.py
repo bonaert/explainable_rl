@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 
 import numpy as np
 
@@ -54,6 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--should_reach_subgoal", action="store_true")
     # Coefficient for that loss term
     parser.add_argument("--man_subgoal_dist_cf", default=1., type=float)
+    # Render in evaluation
+    parser.add_argument("--render_in_eval", action="store_true")
 
     return parser
 
@@ -84,5 +87,8 @@ def get_parser_args(parser: argparse.ArgumentParser, message=None) -> argparse.N
         args.log_file = "{}-{}-{}-{}-{}-{}-{}".format(args.env_name, args.man_rew_scale,
                                                       args.manager_propose_freq, args.noise_type,
                                                       args.man_act_lr, args.ctrl_act_lr, np.random.randint(100))
+    else:
+        current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+        args.log_file = "{}-{}-{}".format(args.log_file, args.env_name, current_time)
 
     return args
