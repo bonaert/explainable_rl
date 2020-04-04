@@ -316,10 +316,9 @@ class Manager:
         # Shape: (batch_size, 10, subgoal_dim)
         candidates = np.concatenate([original_goal, diff_goal, random_goals], axis=1)
         observations = np.array(observations)[:, :-1, :]
-        try:
-            actions = np.array(actions)
-        except Exception as e:
-            raise e
+
+        actions = np.array(actions)
+
         seq_len = len(observations[0])
 
         # To make coding easier
@@ -377,38 +376,44 @@ class Manager:
             # This total reward is scaled by a factor. So the manager tries to pick subgoals that maximize the
             # reward that is collected, and the low level controller tries to get as close as possible to the
             # desired end state; and as fast as possible.
-            state, final_state, goal, subgoal_original, mgr_reward, done, observations, actions = replay_buffer.sample(batch_size)
+            states, final_state, goal, subgoal_original, mgr_rewards, dones, observations, actions = replay_buffer.sample(batch_size)
+            # Basically, the only place where it's needed to have all actions array have the same size are
+            # in the off policy correction section. If you look at the code, that's literally the only place
+            # where we use that variable. This makes sense, because normally the manager shouldn't even care
+            # about the actions of the low-level controller. The only reason we keep track of the actions
+            # and observations is so that we can adjust the subgoal to ones that corresponds better to the
+            # low-level corrections
             if self.correction:
-                subgoal = self.off_policy_corrections(controller_policy, batch_size, subgoal_original, observations, actions)
+                subgoals = self.off_policy_corrections(controller_policy, batch_size, subgoal_original, observations, actions)
             else:
-                subgoal = subgoal_original
+                subgoals = subgoal_original
 
-            state = get_tensor(state)
-            next_state = get_tensor(final_state)
+            states = get_tensor(states)
+            next_states = get_tensor(final_state)
             goal = get_tensor(goal)
-            subgoal = get_tensor(subgoal)
+            subgoals = get_tensor(subgoals)
 
-            reward = get_tensor(mgr_reward)
-            done = get_tensor(1 - done)
+            rewards = get_tensor(mgr_rewards)
+            dones = get_tensor(1 - dones)
 
             # Q target = reward + discount * Q(next_state, pi(next_state))
             # 1) Add clipped normal noise to the action and clip the actions to the bounds
             noise = torch.FloatTensor(subgoal_original).data.normal_(0, self.policy_noise).to(device)
             noise = noise.clamp(-self.noise_clip, self.noise_clip)
-            next_action = (self.actor_target(next_state, goal) + noise)
+            next_action = (self.actor_target(next_states, goal) + noise)
             next_action = torch.min(next_action, self.actor.scale)
             next_action = torch.max(next_action, -self.actor.scale)
             # print(next_action[0])
 
             # 2) Compute the Q values that we want (the target Q values)
-            target_Q1, target_Q2 = self.critic_target(next_state, goal, next_action)
+            target_Q1, target_Q2 = self.critic_target(next_states, goal, next_action)
             # target_Q1, target_Q2 = self.critic_target(next_state, goal, self.actor_target(next_state, goal))
             target_Q = torch.min(target_Q1, target_Q2)
-            target_Q = reward + (done * discount * target_Q)
+            target_Q = rewards + (dones * discount * target_Q)
             target_Q_no_grad = target_Q.detach()
 
             # 3) Get current Q estimate
-            current_Q1, current_Q2 = self.value_estimate(state, goal, subgoal)
+            current_Q1, current_Q2 = self.value_estimate(states, goal, subgoals)
 
             # 4) Compute critic loss for both networks.
             #    This is a dual network achitecture where we take the min predictions of both networks.
@@ -421,7 +426,7 @@ class Manager:
             #     This is simple, we can use the formula g' = s + g - s'. We can then subgoal norm as the distance cost.
             if self.should_reach_subgoal:
                 # Shape (batch_size, subgoal_dim)
-                final_subgoal = state + subgoal - final_state
+                final_subgoal = states + subgoals - final_state
                 # The loss if the sum of the norms (for all meta-transition in the batch)
                 critic_loss += self.subgoal_dist_cost_cf * final_subgoal.norm(dim=-1).sum()
 
@@ -431,7 +436,7 @@ class Manager:
             self.critic_optimizer.step()
 
             # 6) Compute actor loss
-            actor_loss = self.actor_loss(state, goal)
+            actor_loss = self.actor_loss(states, goal)
 
             # 7) Optimize the actor
             self.actor_optimizer.zero_grad()

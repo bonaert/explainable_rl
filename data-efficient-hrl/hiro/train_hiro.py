@@ -253,20 +253,22 @@ def run_hiro(args):
                     manager_transition[5] = float(True)  # Set done to true
 
                     # Every manager transition should have same length of sequences
-                    # TODO: this suggests one difficulty of not changing subgoals with a specific period:
-                    # TODO: the input dimensions will vary! figure out how to deal with this
+                    # In practice, the only reason we care about storing the low level actions is so that
+                    # we can adjust the subgoals in the meta transition (to take into account the fact that
+                    # the low level controller changed). We try different subgoals and see which ones makes
+                    # the stored observations / actions the most likely and pick that one. There's nothing
+                    # here that requires a specific length, it's just more convenient. What they do is
+                    # put +inf, which results in +inf in the calculations later, and then they replace
+                    # all those +inf by 0 in the cost, which solves everything at once.
+                    #
+                    # Therefore, having actions of different sizes isn't a potential problem, it's just more annoying.
                     if len(manager_transition[-2]) <= args.manager_propose_freq:
+                        # The original code just had np.inf, but for Lunar Lander that caused problems
+                        # so what I do is simply create an action array filled with np.inf. This seemed
+                        # to fix the problem
+                        fake_action = np.repeat([np.inf], manager_transition[-1][-1].shape[0])
                         while len(manager_transition[-2]) <= args.manager_propose_freq:
-                            # TODO: the training code never deals with this
-                            # It somehow seems not to be a problem with AntMaze and MountainCar
-                            # but with LunarLander it fucks things up...
-                            # Hypothesis:
-                            # 1) MountainCar nevers reaches the end, so done is never True before
-                            # we did all the actions we could
-                            # 2) AntMaze should reach the end though... at least at the end of the training
-                            #    However, it doesn't trigger the exception. TODO: figure out why!
-
-                            manager_transition[-1].append(np.inf)
+                            manager_transition[-1].append(fake_action)
                             manager_transition[-2].append(state)
 
                     manager_buffer.add(manager_transition)
