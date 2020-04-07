@@ -36,21 +36,35 @@ def run_hiro(args):
     output_dir = os.path.join(args.log_dir, args.log_file)
     print("Logging in {}".format(output_dir))
 
-    if args.env_name in ["MountainCarContinuous-v0", "LunarLanderContinuous-v2"]:
-        env = EnvWithGoal(gym.make(args.env_name), args.env_name)
+    if args.env_name in ["MountainCarContinuous-v0", "LunarLanderContinuous-v2", "Pendulum-v0"]:
+        env = EnvWithGoal(
+            gym.make(args.env_name),
+            args.env_name,
+            use_real_reward=True,
+            should_scale_obs=args.should_reach_subgoal
+        )
         # env.env.reward_type = args.reward_type
         if args.env_name == "MountainCarContinuous-v0":
-            env.distance_threshold = 0.1
+            env.distance_threshold = -1  # We want a positive reward (e.g. a negative distance)
             min_obs, max_obs = env.base_env.observation_space.low, env.base_env.observation_space.high
             man_scale = (max_obs - min_obs) / 2
         elif args.env_name == "LunarLanderContinuous-v2":
-            env.distance_threshold = 0.1
+            env.distance_threshold = -60  # We want at least a reward of 60 (e.g. a distance of -60)
             # Can't use the observation_space bounds directly, because those go from -inf to +inf
             # So I just arbitrariliy picked the value 100 (no idea if this is good or not)
-            man_scale = np.ones(8) * 100
+            man_scale = np.ones(2) * 5  # env.base_env.observation_space.low.shape[0]
+        else:
+            env.distance_threshold = -150  # We want a reward of 150 (TODO: bullshit value, fix it)
+            min_obs, max_obs = env.base_env.observation_space.low, env.base_env.observation_space.high
+            man_scale = (max_obs - min_obs) / 2
+
+        if args.should_reach_subgoal:
+            man_scale = np.ones(man_scale.shape)
 
         controller_goal_dim = man_scale.shape[0]
         no_xy = False  # Can't just take out first dimensions; movement here is different than for ants.
+
+        controller_with_tanh = True
     elif "-v" in args.env_name:
         env = gym.make(args.env_name)
         env.env.reward_type = args.reward_type
@@ -64,6 +78,7 @@ def run_hiro(args):
         man_scale = max_action - min_action
         controller_goal_dim = man_scale.shape[0]
         no_xy = False  # Can't just take out first dimensions; movement here is different than for ants.
+        controller_with_tanh = True
     else:
         # We'll be running on one of the various Ant envs
         env = EnvWithGoal(create_maze_env(args.env_name), args.env_name)
@@ -79,6 +94,7 @@ def run_hiro(args):
         #                  + [60]*3 + [40]*3
         #                  + [60]*3 + [40]*3)
         no_xy = True
+        controller_with_tanh = True
 
     obs = env.reset()
 
@@ -108,7 +124,6 @@ def run_hiro(args):
     state_dim = state.shape[0]
     goal_dim = goal.shape[0]
     action_dim = env.action_space.shape[0]
-
     max_action = float(env.action_space.high[0])
 
     # The goal dim is smaller than the state dim. This is very strange and doesn't seem to be compatible with
@@ -125,6 +140,7 @@ def run_hiro(args):
         critic_lr=args.ctrl_crit_lr,
         ctrl_rew_type=args.ctrl_rew_type,
         no_xy=no_xy,
+        use_tanh=controller_with_tanh
     )
 
     manager_policy = hiro.Manager(
@@ -180,6 +196,8 @@ def run_hiro(args):
     done = True
     evaluations = []
 
+    ACTION_AND_SUGBGOAL_LOGGING_FREQUENCY = 1  # Units: episodes
+
     while total_timesteps < args.max_timesteps:
         # Periodically save everything (controller, manager, buffers and total time steps)
         if args.save_every > 0 and (total_timesteps + 1) % args.save_every == 0:
@@ -196,17 +214,20 @@ def run_hiro(args):
         # We train the controller at the end of every episode and the manager every X timesteps (not episodes!)
         if done:
             if total_timesteps != 0 and not just_loaded:
+                print("Timestep", total_timesteps, "Reward for episode", episode_reward)
+
                 # print('Training Controller...')
                 ctrl_act_loss, ctrl_crit_loss = controller_policy.train(controller_buffer, episode_timesteps,
+                                                                        writer, total_timesteps,
                                                                         args.ctrl_batch_size, args.ctrl_discount,
-                                                                        args.ctrl_tau)
+                                                                        args.ctrl_tau,)
 
-                print(ctrl_act_loss, ctrl_crit_loss, total_timesteps)
+                print("Timestep", total_timesteps, "Actor loss", ctrl_act_loss, "Critic loss", ctrl_crit_loss)
                 writer.add_scalar('data/controller_actor_loss', ctrl_act_loss, total_timesteps)
                 writer.add_scalar('data/controller_critic_loss', ctrl_crit_loss, total_timesteps)
 
                 writer.add_scalar('data/controller_ep_rew', episode_reward, total_timesteps)
-                writer.add_scalar('data/manager_ep_rew', manager_transition[4], total_timesteps)
+                writer.add_scalar('data/manager_ep_rew', episode_reward, total_timesteps)
 
                 # Train Manager perdiocally
                 if timesteps_since_manager >= args.train_manager_freq:
@@ -216,6 +237,7 @@ def run_hiro(args):
                         controller_policy,
                         manager_buffer,
                         ceil(episode_timesteps / args.train_manager_freq),
+                        writer, total_timesteps,
                         args.man_batch_size, args.discount,
                         args.man_tau
                     )
@@ -286,6 +308,11 @@ def run_hiro(args):
 
             # Create new manager transition (sample new subgoal)
             subgoal = manager_policy.sample_subgoal(state, goal)
+            # print(total_timesteps, subgoal)
+
+            if episode_num % ACTION_AND_SUGBGOAL_LOGGING_FREQUENCY == 0:
+                for i in range(min(subgoal.shape[0], 3)):
+                    writer.add_scalar('values/subgoal_%d' % i, subgoal[i], total_timesteps)
 
             timesteps_since_subgoal = 0
 
@@ -296,8 +323,14 @@ def run_hiro(args):
         action = controller_policy.select_action(state, subgoal)
         action = ctrl_noise.perturb_action(action, max_action)
 
+        if episode_num % ACTION_AND_SUGBGOAL_LOGGING_FREQUENCY == 0:
+            for i in range(min(action.shape[0], 2)):
+                writer.add_scalar('values/action_%d' % i, action[i], total_timesteps)
+
         # Perform action, get (nextst, r, d)
         next_tup, manager_reward, env_done, _ = env.step(action)
+
+        writer.add_scalar('values/env_reward', manager_reward, total_timesteps)
 
         # Update cumulative reward (env. reward) for manager
         manager_transition[4] += manager_reward * args.man_rew_scale
@@ -353,6 +386,11 @@ def run_hiro(args):
 
             subgoal = manager_policy.sample_subgoal(state, goal)
             subgoal = man_noise.perturb_action(subgoal, max_action=man_scale)
+            # print(total_timesteps, subgoal)
+
+            if episode_num % ACTION_AND_SUGBGOAL_LOGGING_FREQUENCY == 0:
+                for i in range(min(subgoal.shape[0], 3)):
+                    writer.add_scalar('values/subgoal_%d' % i, subgoal[i], total_timesteps)
 
             # Reset number of timesteps since we sampled a subgoal
             timesteps_since_subgoal = 0

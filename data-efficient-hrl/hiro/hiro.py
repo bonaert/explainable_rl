@@ -10,26 +10,27 @@ totensor = transforms.Compose([transforms.ToPILImage(), transforms.ToTensor()])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def var(tensor) -> torch.Tensor:
+def var(tensor: torch.Tensor) -> torch.Tensor:
     if torch.cuda.is_available():
         return tensor.cuda()
     else:
         return tensor
 
 
-def get_tensor(z) -> torch.Tensor:
+def get_tensor(z: np.ndarray) -> torch.Tensor:
     if len(z.shape) == 1:
         return var(torch.FloatTensor(z.copy())).unsqueeze(0)
     else:
         return var(torch.FloatTensor(z.copy()))
 
+
 class Controller:
-    def __init__(self, state_dim, goal_dim, action_dim, max_action, actor_lr,
-                 critic_lr, ctrl_rew_type, repr_dim=15, no_xy=True,
-                 policy_noise=0.2, noise_clip=0.5,
+    def __init__(self, state_dim: int, goal_dim: int, action_dim: int, max_action, actor_lr: float,
+                 critic_lr: float, ctrl_rew_type: str, repr_dim=15, no_xy=True,
+                 policy_noise=0.2, noise_clip=0.5, use_tanh=True
                  ):
-        self.actor = ControllerActor(state_dim, goal_dim, action_dim, scale=max_action)
-        self.actor_target = ControllerActor(state_dim, goal_dim, action_dim, scale=max_action)
+        self.actor = ControllerActor(state_dim, goal_dim, action_dim, scale=max_action, use_tanh=use_tanh)
+        self.actor_target = ControllerActor(state_dim, goal_dim, action_dim, scale=max_action, use_tanh=use_tanh)
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
 
@@ -55,6 +56,7 @@ class Controller:
         self.max_action = max_action
         self.policy_noise = policy_noise
         self.noise_clip = noise_clip
+        self.use_tanh = use_tanh
 
     def clean_obs(self, state: torch.Tensor, dims=2, no_grad=True) -> torch.Tensor:
         """ Sets the first dims elements of the last dimension to 0
@@ -98,8 +100,6 @@ class Controller:
         else:
             res = self.actor(states, subgoals)
 
-
-
         # one element + A actions -> 1 x A -> squueze() -> A :)
         # one element + 1 action -> 1 x 1 -> squeeze() -> () :(   (we want 1 instead of empty tuple as the shape)
         # N elements (batch) + A actions -> N x A -> squeeze -> N x A :)
@@ -137,7 +137,7 @@ class Controller:
         subgoals = (subgoal + states[:, 0, :self.goal_dim])[:, None] - states[:, :, :self.goal_dim]
         return subgoals
 
-    def train(self, replay_buffer, iterations, batch_size=100, discount=0.99, tau=0.005):
+    def train(self, replay_buffer, iterations, writer, timestep, batch_size=100, discount=0.99, tau=0.005):
         avg_act_loss, avg_crit_loss = 0., 0.
 
         for it in range(iterations):
@@ -156,8 +156,10 @@ class Controller:
             noise = torch.FloatTensor(action).data.normal_(0, self.policy_noise).to(device)
             noise = noise.clamp(-self.noise_clip, self.noise_clip)
             next_action = (self.actor_target(next_state, next_subgoal) + noise)
-            next_action = torch.min(next_action, self.actor.scale)
-            next_action = torch.max(next_action, -self.actor.scale)
+
+            if self.use_tanh:
+                next_action = torch.min(next_action, self.actor.scale)
+                next_action = torch.max(next_action, -self.actor.scale)
 
             # 2) Compute the Q values that we want (the target Q values)
             target_Q1, target_Q2 = self.critic_target(next_state, next_subgoal, next_action)
@@ -167,6 +169,10 @@ class Controller:
 
             # 3) Get current Q estimate
             current_Q1, current_Q2 = self.critic(state, subgoal, action)
+
+            writer.add_scalar('values/mgr_Q_value1', current_Q1[0], timestep + it)
+            writer.add_scalar('values/mgr_Q_value2', current_Q2[0], timestep + it)
+            writer.add_scalar('values/mgr_target_q', target_Q[0], timestep + it)
 
             # 4) Compute critic loss for both networks.
             #    This is a dual network achitecture where we take the min predictions of both networks.
@@ -367,7 +373,7 @@ class Manager:
         # Shape (batch_size, subgoal_dim)
         return candidates[np.arange(batch_size), max_indices]
 
-    def train(self, controller_policy, replay_buffer, iterations, batch_size=100, discount=0.99, tau=0.005):
+    def train(self, controller_policy, replay_buffer, iterations, writer, timestep, batch_size=100, discount=0.99, tau=0.005):
 
         avg_act_loss, avg_crit_loss = 0., 0.
         for it in range(iterations):
@@ -376,7 +382,8 @@ class Manager:
             # This total reward is scaled by a factor. So the manager tries to pick subgoals that maximize the
             # reward that is collected, and the low level controller tries to get as close as possible to the
             # desired end state; and as fast as possible.
-            states, final_state, goal, subgoal_original, mgr_rewards, dones, observations, actions = replay_buffer.sample(batch_size)
+            states, final_state, goal, subgoal_original, mgr_rewards, dones, observations, actions = replay_buffer.sample(
+                batch_size)
             # Basically, the only place where it's needed to have all actions array have the same size are
             # in the off policy correction section. If you look at the code, that's literally the only place
             # where we use that variable. This makes sense, because normally the manager shouldn't even care
@@ -384,7 +391,8 @@ class Manager:
             # and observations is so that we can adjust the subgoal to ones that corresponds better to the
             # low-level corrections
             if self.correction:
-                subgoals = self.off_policy_corrections(controller_policy, batch_size, subgoal_original, observations, actions)
+                subgoals = self.off_policy_corrections(controller_policy, batch_size, subgoal_original, observations,
+                                                       actions)
             else:
                 subgoals = subgoal_original
 
@@ -403,7 +411,6 @@ class Manager:
             next_action = (self.actor_target(next_states, goal) + noise)
             next_action = torch.min(next_action, self.actor.scale)
             next_action = torch.max(next_action, -self.actor.scale)
-            # print(next_action[0])
 
             # 2) Compute the Q values that we want (the target Q values)
             target_Q1, target_Q2 = self.critic_target(next_states, goal, next_action)
@@ -421,14 +428,22 @@ class Manager:
             #    So in total there's 4 networks (Q1, Q2, Q1_target, Q2_target)
             critic_loss = self.criterion(current_Q1, target_Q_no_grad) + self.criterion(current_Q2, target_Q_no_grad)
 
+            writer.add_scalar('values/batch_0.Q_value1', current_Q1[0], timestep + it)
+            writer.add_scalar('values/batch_0.Q_value2', current_Q2[0], timestep + it)
+            writer.add_scalar('values/batch_0.target_q', target_Q[0], timestep + it)
+
+            writer.add_scalar('values/loss_td_error', critic_loss, timestep + it)
+
             # 4b) Optionally add the component that increases the loss if the low level controller couldn't reach
             #     the subgoal. This loss is a measure of the distance. We need to compute the subgoal at the last step
             #     This is simple, we can use the formula g' = s + g - s'. We can then subgoal norm as the distance cost.
             if self.should_reach_subgoal:
                 # Shape (batch_size, subgoal_dim)
-                final_subgoal = states + subgoals - final_state
+                final_subgoal = states[..., :self.action_dim] + subgoals - final_state[..., :self.action_dim]
                 # The loss if the sum of the norms (for all meta-transition in the batch)
-                critic_loss += self.subgoal_dist_cost_cf * final_subgoal.norm(dim=-1).sum()
+                subgoal_loss = self.subgoal_dist_cost_cf * final_subgoal.norm(dim=-1).sum()
+                writer.add_scalar('values/subgoal_dist_loss', subgoal_loss.item(), timestep + it)
+                critic_loss += subgoal_loss
 
             # 5) Optimize the critic
             self.critic_optimizer.zero_grad()

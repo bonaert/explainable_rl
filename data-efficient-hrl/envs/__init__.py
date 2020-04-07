@@ -7,13 +7,8 @@ import envs.create_maze_env
 
 
 def get_goal_sample_fn(env_name, evaluate):
-    if env_name == "MountainCarContinuous-v0":
-        # Taken from: https://github.com/openai/gym/blob/master/gym/envs/classic_control/continuous_mountain_car.py#L37
-        return lambda: np.array([0.45, 0])
-    elif env_name == "LunarLanderContinuous-v2":
-        # Taken from: https://github.com/openai/gym/blob/master/gym/envs/box2d/lunar_lander.py
-        return lambda: np.array([1, 1])  # Non informative goal
-        # return lambda: np.array([0.45, 3.33333333333333333333])
+    if env_name in ["MountainCarContinuous-v0", "LunarLanderContinuous-v2", "Pendulum-v0"]:
+        return lambda: np.array([0, 0])  # Non informative goal
     elif env_name == 'AntMaze':
         # NOTE: When evaluating (i.e. the metrics shown in the paper,
         # we use the commented out goal sampling function.    The uncommented
@@ -31,11 +26,7 @@ def get_goal_sample_fn(env_name, evaluate):
 
 
 def get_reward_fn(env_name):
-    if env_name == 'MountainCarContinuous-v0':
-        return lambda obs, goal: -np.sum(np.square(obs[:2] - goal)) ** 0.5
-    elif env_name == 'LunarLanderContinuous-v2':
-        return lambda obs, goal: -np.sum(np.square(obs[:2] - goal)) ** 0.5
-    elif env_name == 'AntMaze':
+    if env_name == 'AntMaze':
         return lambda obs, goal: -np.sum(np.square(obs[:2] - goal)) ** 0.5
     elif env_name == 'AntPush':
         return lambda obs, goal: -np.sum(np.square(obs[:2] - goal)) ** 0.5
@@ -50,22 +41,33 @@ def success_fn(last_reward):
 
 
 class EnvWithGoal(object):
-    def __init__(self, base_env, env_name):
+    def __init__(self, base_env, env_name, use_real_reward=False, max_timesteps=500, should_scale_obs=False):
         self.base_env = base_env
         self.env_name = env_name
         self.evaluate = False
-        self.reward_fn = get_reward_fn(env_name)
+        self.reward_fn = None if use_real_reward else get_reward_fn(env_name)
         self.goal = None
         self.distance_threshold = 5
         self.count = 0
+        self.use_real_reward = use_real_reward
+        self.max_timesteps = max_timesteps
+        self.should_scale_obs = should_scale_obs
 
     def seed(self, seed):
         self.base_env.seed(seed)
+
+    def scale_obs(self, obs):
+        if self.should_scale_obs:
+            assert (self.base_env.observation_space.high == -self.base_env.observation_space.low).all()
+            obs /= self.base_env.observation_space.high
+
+        return obs
 
     def reset(self):
         # self.viewer_setup()
         self.goal_sample_fn = get_goal_sample_fn(self.env_name, self.evaluate)
         obs = self.base_env.reset()
+        obs = self.scale_obs(obs)
         self.count = 0
         self.goal = self.goal_sample_fn()
         return {
@@ -75,15 +77,17 @@ class EnvWithGoal(object):
         }
 
     def step(self, a):
-        obs, _, done, info = self.base_env.step(a)
-        reward = self.reward_fn(obs, self.goal)
+        obs, real_reward, done, info = self.base_env.step(a)
+        obs = self.scale_obs(obs)
+        reward = real_reward if self.use_real_reward else self.reward_fn(obs, self.goal)
         self.count += 1
         next_obs = {
             'observation': obs.copy(),
             'achieved_goal': obs[:2],
             'desired_goal': self.goal,
         }
-        return next_obs, reward, done or self.count >= 500, info
+        done = done or (self.max_timesteps is not None and self.count >= self.max_timesteps)
+        return next_obs, reward, done, info
 
     def render(self):
         self.base_env.render()
