@@ -1,3 +1,4 @@
+tqdm
 torchvision
 tensorboardX
 pyswarm
