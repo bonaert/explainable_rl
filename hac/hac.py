@@ -6,6 +6,7 @@ import dataclasses
 from typing import List, Tuple, Union
 
 import numpy as np
+from pathlib import Path
 
 import gym
 import torch
@@ -202,7 +203,7 @@ class HacParams:
     batch_size: int
     num_training_episodes: int
     num_levels: int
-    max_horizon: int
+    max_horizons: List[int]
     discount: float
     replay_buffer_size: int
     subgoal_testing_frequency: float
@@ -233,14 +234,18 @@ class HacParams:
     policies: List[DDPG] = field(default_factory=list)
 
     def __post_init__(self):
+        # This method is executed at the end of the constructor. Here, I can setup the list I need
+        # I do some validation then setup some variables with their real value
+        # This is useful for the user, which doesn't have to it themselves and saves work
+        # It also ensures it's done correctly
         assert 0 <= self.subgoal_testing_frequency <= 1, "Subgoal testing frequency must be between 0 and 1"
         assert 0 <= self.discount <= 1, "Discount must be between 0 and 1"
         assert 1 <= self.num_levels, "The number of levels must be at least 1"
-        assert 1 <= self.max_horizon, "The horizon must at least be 1 step long"
+        assert (1 <= np.array(self.max_horizons)).all(), "All horizons must at least be 1 step long"
+        assert len(self.max_horizons) == self.num_levels, "There must be as many horizons as the number of levels"
         assert len(self.distance_thresholds) == self.num_levels, \
             "Number of distances thresholds (%d) is different from the number of levels (%d)" % (
                 len(self.distance_thresholds), self.num_levels)
-
         assert not np.isinf(self.action_low).any(), "Error: the action space cannot have +-infinite lower bounds"
         assert not np.isinf(self.action_high).any(), "Error: the action space cannot have +-infinite upper bounds"
         assert not np.isinf(self.state_low).any(), "Error: the state space cannot have +-infinite lower bounds"
@@ -252,7 +257,16 @@ class HacParams:
         self.state_size = len(self.state_low)
         self.action_size = len(self.action_low)
 
-        # This method is executed at the end of the constructor. Here, I can setup the list I need
+        for i in range(self.num_levels):
+            assert len(self.distance_thresholds[i]) == self.state_size, \
+                "Number of distances thresholds at level %d is %d but should be %d (state dim)" % (
+                    i, len(self.distance_thresholds[i]), self.state_size)
+
+        assert len(self.subgoal_noise_coeffs) == self.state_size, \
+            "Subgoal noise has %d dims but the states have %d dims" % (len(self.subgoal_noise_coeffs), self.state_size)
+        assert len(self.action_noise_coeffs) == self.action_size, \
+            "Action noise has %d dims but the actions have %d dims" % (len(self.action_noise_coeffs), self.action_size)
+
         self.her_storage = [[] for _ in range(self.num_levels)]
         self.policies = []
         for level in range(self.num_levels):
@@ -261,7 +275,7 @@ class HacParams:
                 goal_size=self.state_size,
                 action_range=self.state_range if level > 0 else self.action_range,
                 action_center=self.state_center if level > 0 else self.action_center,
-                q_bound=-self.max_horizon,
+                q_bound=-self.max_horizons[level],
                 buffer_size=self.replay_buffer_size,
                 batch_size=self.batch_size
             )
@@ -369,7 +383,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                   training: bool, render: bool) -> Tuple[np.ndarray, bool]:
     current_state = start_state
     num_attempts = 0
-    while num_attempts < hac_params.max_horizon and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params):
+    while num_attempts < hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params):
         # Step 1: sample a (noisy) action from the policy
         action, next_is_testing_subgoal = pick_action_and_testing(current_state, goal, level, is_testing_subgoal, env, hac_params, training)
 
@@ -387,7 +401,9 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             next_state, _, _, _ = env.step(action)
             if render:
                 if hac_params.num_levels == 2:
-                    env.unwrapped.render_goal(subgoals_stack[-1], subgoals_stack[-2])
+                    env.unwrapped.render_goal(*subgoals_stack[::-1])
+                elif hac_params.num_levels == 3:
+                    env.unwrapped.render_goal_2(*subgoals_stack[::-1])
 
         # Step 3: create replay transitions
         if level > 0 and lower_level_layer_maxed_out:
@@ -397,7 +413,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 if reached_subgoal(next_state, goal=action, level=level, hac_params=hac_params):  # The action is the su
                     penalty = 0  # We were able to reach the
                 else:
-                    penalty = -hac_params.max_horizon
+                    penalty = -hac_params.max_horizons[level]
 
                 # "We use a discount rate of 0 in these transitions to avoid non-stationary transition function issues"
                 testing_transition = (current_state, action, penalty, next_state, goal, 0)
@@ -429,7 +445,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         hac_params.her_storage[level].clear()
 
     # Step 4: return the current (final) state and maxed_out
-    maxed_out = (num_attempts == hac_params.max_horizon and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params))
+    maxed_out = (num_attempts == hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params))
     return current_state, maxed_out
 
 
@@ -457,12 +473,10 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray,
     return num_successes, success_rate
 
 
-def train(hac_params: HacParams, env: gym.Env):
+def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, directory: str):
     for i in tqdm(range(hac_params.num_training_episodes)):
         # Train
         state = env.reset()
-        # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L45
-        goal_state = np.array([0.48, 0.04])
         run_hac(hac_params, state, goal_state, env, training=True, render=False)
         update_networks(hac_params)
 
@@ -472,7 +486,7 @@ def train(hac_params: HacParams, env: gym.Env):
             print("\nStep %d: Success rate (%d/5): %.3f" % (i + 1, num_successes, success_rate))
 
         if (i + 1) % hac_params.save_frequency == 0:
-            save_hac(hac_params)
+            save_hac(hac_params, directory)
 
 
 def json_default(obj):
@@ -486,6 +500,9 @@ def json_default(obj):
 
 
 def save_hac(hac_params: HacParams, directory: str = "."):
+    # Create directory if it doesn't exit
+    Path(directory).mkdir(parents=True, exist_ok=True)
+
     # Save the policies at all levels
     policies_state_dicts = {f"policy_level_{i}": hac_params.policies[i].state_dict() for i in range(hac_params.num_levels)}
     torch.save(policies_state_dicts, f"{directory}/policies.ckpt")
@@ -493,7 +510,7 @@ def save_hac(hac_params: HacParams, directory: str = "."):
     # Save the HAC parameters (without the agents and the buffers)
     policies_backup = hac_params.policies
     hac_params.policies = ["The models are stored in the 'policies.ckpt' file because otherwise this JSON file would be huge and unreadable."
-                           "The load_hac() will also deserialize this JSON file both and the policies, and then merge them."]
+                           "\n The load_hac() will deserialize both this JSON file and the policies, and then merge the results."]
     with open(f'{directory}/hac_params.json', 'w') as f:
         json.dump(hac_params, f, default=json_default, indent=4, sort_keys=True)
     hac_params.policies = policies_backup
@@ -522,7 +539,12 @@ def load_hac(directory: str = ".") -> HacParams:
 
 
 if __name__ == '__main__':
-    current_env = gym.make("MountainCarContinuous-v0")
+    # current_env = gym.make("MountainCarContinuous-v0")
+    # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L45
+    # goal_state = np.array([0.48, 0.04])
+
+    current_env = gym.make("Pendulum-v0")
+    current_goal_state = np.array([0.0, 1.0, 0.0])
 
     # For MountainCar, the values for the HacParams were taken from here:
     # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py
@@ -539,11 +561,11 @@ if __name__ == '__main__':
         # batch_size=1024,  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L43
         batch_size=100,
         # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L56
-        num_training_episodes=500,
+        num_training_episodes=700,
         # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L138
-        num_levels=2,
-        # max_horizon=10,  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
-        max_horizon=20,
+        num_levels=3,
+        # max_horizons=[10, 10],  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
+        max_horizons=[16, 8, 8],  # Lower levels have the right to more steps. We want few high level goals.
         # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
         # discount=0.98,  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/master/critic.py#L8
         discount=0.95,
@@ -558,14 +580,20 @@ if __name__ == '__main__':
         # They have threshold for Mujoco agents, but here it's MountainCar, so I'll have to figure out for myself what good distance threshold are
         # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # distance_thresholds=[0.1, 0.1],
-        distance_thresholds=[[0.01, 0.02],  # We want to have precise subgoals
-                             [0.05, 10]],    # But for the goal I only care about the position (not the speed)
+        # distance_thresholds=[[0.01, 0.02],  # We want to have precise subgoals
+        #                      [0.01, 0.02],
+        #                      [0.05, 10]],    # But for the goal I only care about the position (not the speed)
+        distance_thresholds=[[0.02, 0.02, 0.1],  # Pendulum state = (x, y, angular velocity)
+                             [0.02, 0.02, 0.1],
+                             [0.02, 0.02, 0.05]],
         # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
         # action_noise_coeffs=np.array([0.1] * current_action_size),  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L131
         # subgoal_noise_coeffs=np.array([0.03] * current_state_size),  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L132
+        # action_noise_coeffs=np.array([0.1]),  # MC
         action_noise_coeffs=np.array([0.1]),
         # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L42
-        subgoal_noise_coeffs=np.array([0.02, 0.01]),
+        # subgoal_noise_coeffs=np.array([0.02, 0.01]), # MC
+        subgoal_noise_coeffs=np.array([0.02, 0.02, 0.02]),
         # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L43
 
         num_update_steps_when_training=40,
@@ -576,9 +604,12 @@ if __name__ == '__main__':
         save_frequency=50
     )
 
-    # train(current_hac_params, current_env)
-
-    hac_params = load_hac()
-    mc_goal_state = np.array([0.48, 0.04])
-    evaluate_hac(hac_params, current_env, mc_goal_state, num_evals=100, always_render=True)
+    # current_directory = "mountain_car_3_levels_h_4_8_16"
+    current_directory = "pendulum_3_levels_h_4_8_16"
+    currently_training = True
+    if currently_training:
+        train(current_hac_params, current_env, current_goal_state, directory=current_directory)
+    else:
+        current_hac_params = load_hac(current_directory)
+        evaluate_hac(current_hac_params, current_env, current_goal_state, num_evals=100, always_render=True)
 
