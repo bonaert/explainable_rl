@@ -465,15 +465,16 @@ def run_hac(hac_params: HacParams, start_state: np.ndarray, goal_state: np.ndarr
 
 
 def evaluate_hac(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray,
-                 render_frequency: int, num_evals: int = 5) -> Tuple[int, float]:
-    num_successes = 0
-    for i in range(num_evals):
-        state = env.reset()
-        render_now = (render_frequency == ALWAYS) or (render_frequency == FIRST_RUN and i == 0)
-        _, failed = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
+                 render_frequency: int, num_evals: int = 20) -> Tuple[int, float]:
+    with torch.no_grad():
+        num_successes = 0
+        for i in range(num_evals):
+            state = env.reset()
+            render_now = (render_frequency == ALWAYS) or (render_frequency == FIRST_RUN and i == 0)
+            _, failed = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
 
-        if not failed:
-            num_successes += 1
+            if not failed:
+                num_successes += 1
 
     success_rate = num_successes / float(num_evals)
     return num_successes, success_rate
@@ -489,7 +490,12 @@ def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_fr
         # Evaluate HAC
         if i == 0 or (i + 1) % hac_params.evaluation_frequency == 0:
             num_successes, success_rate = evaluate_hac(hac_params, env, goal_state, render_frequency)
-            print("\nStep %d: Success rate (%d/5): %.3f" % (i + 1, num_successes, success_rate))
+            print("\nStep %d: Success rate (%d/20): %.3f" % (i + 1, num_successes, success_rate))
+
+            if success_rate == 1.0:
+                print("Perfect success rate. Stopping training and saving model.")
+                save_hac(hac_params, directory)
+                return
 
         # Save HAC policies and params
         if (i + 1) % hac_params.save_frequency == 0:
@@ -550,10 +556,9 @@ if __name__ == '__main__':
     ##################################
     #     Environment parameters     #
     ##################################
-
     # env_name = "AntMaze"
-    env_name = "MountainCar"
-    # env_name = "AntMaze"
+    # env_name = "MountainCar"
+    env_name = "Pendulum"
     if env_name == "AntMaze":
         # distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # max_horizons = 10  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
@@ -565,33 +570,36 @@ if __name__ == '__main__':
         current_goal_state = np.array([0.48, 0.04])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L45
 
         # noinspection PyUnreachableCode
-        if False:
+        if True:
             num_levels = 2
             max_horizons = [20, 20]  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
             distance_thresholds = [[0.01, 0.02],    # We want to have precise subgoals
-                                   [0.05, 10.0]]   # But for the goal I only care about the position (not the speed)
+                                   [0.1, 10.0]]   # But for the goal I only care about the position (not the speed)
         else:
             num_levels = 3
             max_horizons = [10, 10, 10]
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
             distance_thresholds = [[0.01, 0.02],   # We want to have precise subgoals
                                    [0.01, 0.02],
-                                   [0.05, 10.0]]    # But for the goal I only care about the position (not the speed)
+                                   [0.1, 10.0]]    # But for the goal I only care about the position (not the speed)
 
-        action_noise_coeffs=np.array([0.1])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L42
-        subgoal_noise_coeffs = np.array([0.02, 0.01])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L43
-    elif True:
+        action_noise_coeffs = np.array([0.1])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L42
+        subgoal_noise_coeffs = np.array([0.1, 0.1])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L43
+    elif env_name == "Pendulum":
         current_env = gym.make("Pendulum-v0")
         current_goal_state = np.array([0.0, 1.0, 0.0])
 
+        # Action space: Low [-2.]	        High [2.]
+        # State space:  Low [-1. -1. -8.]	High [1. 1. 8.]
         num_levels = 2
         max_horizons = [15, 15]
         distance_thresholds = [[0.10, 0.10, 1.0],  # Pendulum state = (x, y, angular velocity)
-                               [0.05, 0.05, 0.2]]
-
-        action_noise_coeffs = np.array([0.05])
-        subgoal_noise_coeffs = np.array([0.02, 0.02, 0.3])
+                               [0.05, 0.05, 0.4]]
+        action_noise_coeffs = np.array([0.1])
+        subgoal_noise_coeffs = np.array([0.02, 0.02, 0.5])
+    else:
+        raise Exception("Unsupported environment.")
 
     current_state_size = current_env.observation_space.low.shape[0]
     current_action_size = current_env.action_space.low.shape[0]
@@ -599,10 +607,12 @@ if __name__ == '__main__':
     ########################################
     #     Regularly changed parameters     #
     ########################################
-    current_directory = f"{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}"
+    version = 2
+    current_directory = f"{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     currently_training = True
     render_frequency = FIRST_RUN
-    num_training_episodes = 500
+    num_training_episodes = 5000
+    evaluation_frequency = 50
 
     #############################
     #     Shared parameters     #
@@ -621,7 +631,6 @@ if __name__ == '__main__':
     replay_buffer_size = 500_000  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/117d4002e754a53019b5cf7f103946d382488217/utils.py#L4
     subgoal_testing_frequency = 0.3  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L125
     num_update_steps_when_training = 40  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/agent.py#L40
-    evaluation_frequency = 50  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L138
 
     current_hac_params = HacParams(
         action_low=current_env.action_space.low,
@@ -650,5 +659,5 @@ if __name__ == '__main__':
         train(current_hac_params, current_env, current_goal_state, render_frequency, directory=current_directory)
     else:
         current_hac_params = load_hac(current_directory)
-        evaluate_hac(current_hac_params, current_env, current_goal_state, render_frequency, num_evals=100)
+        evaluate_hac(current_hac_params, current_env, current_goal_state, render_frequency=ALWAYS, num_evals=100)
 
