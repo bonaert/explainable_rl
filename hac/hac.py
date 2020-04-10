@@ -424,19 +424,29 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 testing_transition = (current_state, action, penalty, next_state, goal, 0)
                 hac_params.policies[level].add_to_buffer(testing_transition)
 
-            action = next_state  # Replace original action with action executed in hindsight
+            hindsight_action = next_state  # Replace original action with action executed in hindsight
+        else:
+            # There are 2 exception for the action hindsights where we don't replace the subgoal by the next state:
+            # 1) If we reached the subgoal, then we can use the action (= subgoal)
+            # 2) If we're at the lowest level, the action isn't a subgoal so it doesn't make sense to change it (the logic doesn't apply)
+            hindsight_action = action
 
         if training:
             # Evaluate executed action on current goal and hindsight goals
             # Step 3b) Create a "hindsight action transition"
+            # Here, compute_reward_and_discount only looks at the goal directly above (and not the layer upwards)
+            # The paper isn't precise about this, but I checked the original code and they do the same
+            # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L145
             action_transition_reward, action_transition_discount = compute_reward_and_discount(next_state, goal, level, hac_params)
-            action_transition = (current_state, action, action_transition_reward, next_state, goal, action_transition_discount)
+            action_transition = (current_state, hindsight_action, action_transition_reward, next_state, goal, action_transition_discount)
             hac_params.policies[level].add_to_buffer(action_transition)
 
             # Step 3c) Prepare the "hindsight goal transition"
-            # There need to be a list because they will be completed later on, and tuples don't allow modification in place
+            # hindsight goal transitions would be created in the same way for the high level of the toy robot, except that the hindsight
+            # goal transitions would be made from copies of the hindsight action transitions. Assuming
+            # They need to be a list because they will be completed later on, and tuples don't allow modification in place
             #                                         TBD               TBD   TBD
-            goal_transition = [current_state, action, None, next_state, None, None]
+            goal_transition = [current_state, hindsight_action, None, next_state, None, None]
             hac_params.her_storage[level].append(goal_transition)
 
         num_attempts += 1
@@ -593,7 +603,7 @@ if __name__ == '__main__':
         # Action space: Low [-2.]	        High [2.]
         # State space:  Low [-1. -1. -8.]	High [1. 1. 8.]
         num_levels = 2
-        max_horizons = [15, 15]
+        max_horizons = [10, 25]
         distance_thresholds = [[0.10, 0.10, 1.0],  # Pendulum state = (x, y, angular velocity)
                                [0.05, 0.05, 0.4]]
         action_noise_coeffs = np.array([0.1])
