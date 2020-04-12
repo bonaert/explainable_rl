@@ -73,6 +73,10 @@ NEVER = 0
 # handle the action details when it's needed
 # And should a subgoal be a tuple or numpy array? I think it's probably easier if it's a numpy array
 
+
+# There's a problem when I try the 3 level agent: it starts picking subgoals that are immediately reached.
+# I probably need to add transitions that punish this kind of behavior.
+
 def mk_transition(state: np.ndarray, action: np.ndarray, env_reward: float, total_env_reward: float,
                   next_state: np.ndarray, transition_reward: float, goal: np.ndarray, discount: float):
     """ This function is here just for type-checking and making it easier to ensure the order is correct through the IDE help """
@@ -261,6 +265,8 @@ class HacParams:
     evaluation_frequency: int
 
     save_frequency: int
+
+    env_threshold: float
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
     state_size: int = -1
@@ -478,12 +484,11 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             next_state, action_reward, done, _ = env.step(action)
             next_state = next_state.astype(np.float32)
             if render:
-                mc_goal = np.array([0.48, 0.04])
-                # pendulum_goal = np.array([0.0, 1.0, 0.0])
+                env_end_goal = np.array([0.0, 1.0, 0.0]) if env.spec.id == 'Pendulum-v0' else np.array([0.48, 0.04])
                 if hac_params.num_levels == 2:
-                    env.unwrapped.render_goal(subgoals_stack[0][:-1], mc_goal)
+                    env.unwrapped.render_goal(subgoals_stack[0][:-1], env_end_goal)
                 elif hac_params.num_levels == 3:
-                    env.unwrapped.render_goal_2(subgoals_stack[1][:-1], subgoals_stack[0][:-1], mc_goal)
+                    env.unwrapped.render_goal_2(subgoals_stack[1][:-1], subgoals_stack[0][:-1], env_end_goal)
 
         total_reward += action_reward
 
@@ -605,7 +610,7 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, render_frequency: int, num
             render_now = (render_frequency == ALWAYS) or (render_frequency == FIRST_RUN and i == 0)
             _, reward, maxed_out, done = run_hac(hac_params, state, goal_state=None, env=env, training=False, render=render_now)
 
-            if reward > env.spec.reward_threshold:
+            if reward > hac_params.env_threshold:
                 num_successes += 1
             rewards.append(reward)
 
@@ -682,8 +687,8 @@ if __name__ == '__main__':
     #     Environment parameters     #
     ##################################
     # env_name = "AntMaze"
-    env_name = "MountainCar"
-    # env_name = "Pendulum"
+    # env_name = "MountainCar"
+    env_name = "Pendulum"
     if env_name == "AntMaze":
         # state_distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # max_horizons = 10  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
@@ -694,36 +699,38 @@ if __name__ == '__main__':
         current_env = gym.make("MountainCarContinuous-v0")
 
         # noinspection PyUnreachableCode
-        if True:
+        if False:
             num_levels = 2
             max_horizons = [20]  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
             state_distance_thresholds = [[0.1, 0.1]]
         else:
             num_levels = 3
-            max_horizons = [10, 10]
+            max_horizons = [20, 15]
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
-            state_distance_thresholds = [[0.01, 0.02],  # We want to have precise subgoals
-                                         [0.01, 0.02]]    # But for the goal I only care about the position (not the speed)
+            state_distance_thresholds = [[0.1, 0.1],  # We want to have precise subgoals
+                                         [0.1, 0.1]]    # But for the goal I only care about the position (not the speed)
 
         action_noise_coeffs = np.array([0.1])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L42
-        state_noise_coeffs = np.array([0.1, 0.1])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L43
-        reward_noise_coeff = 0.1
+        state_noise_coeffs = np.array([0.2, 0.2])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L43
+        reward_noise_coeff = 1
         reward_low = -100.0  # TODO
         reward_high = 100.0   # TODO
+        current_env_threshold = current_env.spec.reward_threshold
     elif env_name == "Pendulum":
         current_env = gym.make("Pendulum-v0")
 
         # Action space: Low [-2.]	        High [2.]
         # State space:  Low [-1. -1. -8.]	High [1. 1. 8.]
         num_levels = 2
-        max_horizons = [20]
-        state_distance_thresholds = [[0.10, 0.10, 1.0]]  # Pendulum state + reward = (x, y, angular velocity)
+        max_horizons = [5]
+        state_distance_thresholds = [[0.04, 0.04, 0.1]]  # Pendulum state + reward = (x, y, angular velocity)
         action_noise_coeffs = np.array([0.1])
-        state_noise_coeffs = np.array([0.02, 0.02, 0.5])
-        reward_noise_coeff = 0.1
-        reward_low = -100.0  # TODO
-        reward_high = 100.0  # TODO
+        state_noise_coeffs = np.array([0.02, 0.02, 0.1])
+        reward_noise_coeff = 1
+        reward_low = -200.0
+        reward_high = 50.0
+        current_env_threshold = -150.0
     else:
         raise Exception("Unsupported environment.")
 
@@ -733,7 +740,7 @@ if __name__ == '__main__':
     ########################################
     #     Regularly changed parameters     #
     ########################################
-    version = 3
+    version = 4
     current_directory = f"{env_name}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     currently_training = True
     my_render_frequency = FIRST_RUN
@@ -779,6 +786,7 @@ if __name__ == '__main__':
         num_update_steps_when_training=num_update_steps_when_training,
         evaluation_frequency=evaluation_frequency,
         save_frequency=evaluation_frequency,
+        env_threshold=current_env_threshold
     )
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
