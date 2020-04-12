@@ -698,7 +698,7 @@ if __name__ == '__main__':
             num_levels = 2
             max_horizons = [20]  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
-            state_distance_thresholds = [[0.01, 0.1]]
+            state_distance_thresholds = [[0.1, 0.1]]
         else:
             num_levels = 3
             max_horizons = [10, 10]
@@ -733,7 +733,7 @@ if __name__ == '__main__':
     ########################################
     #     Regularly changed parameters     #
     ########################################
-    version = 2
+    version = 3
     current_directory = f"{env_name}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     currently_training = True
     my_render_frequency = FIRST_RUN
