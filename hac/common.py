@@ -6,6 +6,11 @@ import numpy as np
 import torch
 
 
+ALWAYS = 2
+FIRST_RUN = 1
+NEVER = 0
+
+
 def get_tensor(x: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
     if torch.is_tensor(x):
         return x.float()
