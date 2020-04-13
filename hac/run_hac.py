@@ -1,7 +1,7 @@
 import numpy as np
 import gym
 from hac import load_hac, train, evaluate_hac, HacParams
-from common import ALWAYS, FIRST_RUN, NEVER
+from common import ALWAYS, FIRST_RUN, NEVER, get_args
 
 if __name__ == '__main__':
     # noinspection PyUnreachableCode
@@ -59,10 +59,11 @@ if __name__ == '__main__':
     ########################################
     #     Regularly changed parameters     #
     ########################################
+    args = get_args()
     version = 2
     current_directory = f"{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     currently_training = True
-    render_frequency = FIRST_RUN
+    render_frequency = NEVER if args.no_render else FIRST_RUN
     num_training_episodes = 5000
     evaluation_frequency = 50
 

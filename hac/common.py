@@ -1,14 +1,28 @@
 import dataclasses
 from collections import deque
 from typing import Union, List, Tuple
+import gym
 
 import numpy as np
 import torch
+import argparse
 
 
 ALWAYS = 2
 FIRST_RUN = 1
 NEVER = 0
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-render", action="store_true")
+    args = parser.parse_args()
+    return args
+
+
+def can_display_env():
+    env = gym.make("Pendulum-v0")
+    env.render()
 
 
 def get_tensor(x: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
