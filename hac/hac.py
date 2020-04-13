@@ -370,7 +370,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             if training and next_is_testing_subgoal:  # Penalize subgoal ai
                 # Step 3a) Create "subgoal testing transition"
                 # We want to penalize the lower level agent if it didn't reach the subgoal set by this agent
-                if reached_subgoal(next_state, goal=action, level=level, hac_params=hac_params):  # The action is the su
+                if reached_subgoal(next_state, goal=action, level=level - 1, hac_params=hac_params):  # The action is the su
                     penalty = 0  # We were able to reach the
                 else:
                     penalty = -hac_params.max_horizons[level]

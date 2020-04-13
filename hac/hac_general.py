@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from common import get_tensor, ReplayBuffer, get_range_and_center, json_default
 
-HUGE_PENALTY = -10000
+HUGE_PENALTY = -100000
 
 ALWAYS = 2
 FIRST_RUN = 1
@@ -497,7 +497,6 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             if training and next_is_testing_subgoal:  # Penalize subgoal ai
                 # Step 3a) Create "subgoal testing transition"
                 # We want to penalize the lower level agent if it didn't reach the subgoal set by this agent
-                # TODO: the level - 1 thing might also be something I need to fix in the HAC code!!!
                 did_reach_subgoal = reached_subgoal(next_state, total_reward, goal=action, level=level - 1, hac_params=hac_params)
 
                 # "We use a discount rate of 0 in these transitions to avoid non-stationary transition function issues"
@@ -724,12 +723,12 @@ if __name__ == '__main__':
         # State space:  Low [-1. -1. -8.]	High [1. 1. 8.]
         num_levels = 2
         max_horizons = [5]
-        state_distance_thresholds = [[0.04, 0.04, 0.1]]  # Pendulum state + reward = (x, y, angular velocity)
+        state_distance_thresholds = [[0.1, 0.1, 1]]  # Pendulum state + reward = (x, y, angular velocity)
         action_noise_coeffs = np.array([0.1])
         state_noise_coeffs = np.array([0.02, 0.02, 0.1])
-        reward_noise_coeff = 1
-        reward_low = -200.0
-        reward_high = 50.0
+        reward_noise_coeff = 2
+        reward_low = -15 * max_horizons[0]
+        reward_high = 5 * max_horizons[0]
         current_env_threshold = -150.0
     else:
         raise Exception("Unsupported environment.")
