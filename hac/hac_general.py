@@ -482,7 +482,9 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             next_state = next_state.astype(np.float32)
             if render:
                 env_end_goal = np.array([0.0, 1.0, 0.0]) if env.spec.id == 'Pendulum-v0' else np.array([0.48, 0.04])
-                if hac_params.num_levels == 2:
+                if env.spec.id.startswith("Bipedal"):
+                    env.render()
+                elif hac_params.num_levels == 2:
                     env.unwrapped.render_goal(subgoals_stack[0][:-1], env_end_goal)
                 elif hac_params.num_levels == 3:
                     env.unwrapped.render_goal_2(subgoals_stack[1][:-1], subgoals_stack[0][:-1], env_end_goal)

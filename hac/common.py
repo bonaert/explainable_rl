@@ -20,6 +20,34 @@ def get_args():
     return args
 
 
+class ActionRepeatEnvWrapper(object):
+    def __init__(self, env, action_repeat, reward_scale=1):
+        self._env = env
+        self.reward_scale = reward_scale
+        env.spec.reward_threshold *= reward_scale
+        self.action_repeat = action_repeat
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+    def reset(self):
+        obs = self._env.reset()
+        return obs
+
+    def step(self, action):
+        # action += act_noise * (-2 * np.random.random(4) + 1)
+        r = 0.0
+        for _ in range(self.action_repeat):
+            obs_, reward_, done_, info_ = self._env.step(action)
+            r = r + reward_
+            if done_ and self.action_repeat != 1:
+                return obs_, 0.0, done_, info_
+            if self.action_repeat == 1:
+                return obs_, r, done_, info_
+        return obs_, self.reward_scale * r, done_, info_
+
+
+
 def can_display_env():
     env = gym.make("Pendulum-v0")
     env.render()

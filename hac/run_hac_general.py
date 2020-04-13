@@ -1,7 +1,7 @@
 import gym
 import numpy as np
 from hac_general import HacParams, evaluate_hac, train, load_hac
-from common import ALWAYS, FIRST_RUN, NEVER, get_args
+from common import ALWAYS, FIRST_RUN, NEVER, get_args, ActionRepeatEnvWrapper
 
 if __name__ == '__main__':
     # noinspection PyUnreachableCode
@@ -10,7 +10,12 @@ if __name__ == '__main__':
     ##################################
     # env_name = "AntMaze"
     # env_name = "MountainCar"
-    env_name = "Pendulum"
+    # env_name = "Pendulum"
+    env_name = "BipedalWalker-v3"
+
+    overriden_state_space_low = None
+    overriden_state_space_high = None
+
     if env_name == "AntMaze":
         # state_distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # max_horizons = 10  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
@@ -53,6 +58,27 @@ if __name__ == '__main__':
         reward_low = -15 * max_horizons[0]
         reward_high = 5 * max_horizons[0]
         current_env_threshold = -150.0
+    elif env_name == "BipedalWalker-v3":
+        current_env = gym.make('BipedalWalker-v3')
+        # env = gym.make('BipedalWalkerHardcore-v3')
+        current_env = ActionRepeatEnvWrapper(current_env, 3)
+        # Action space: Low [-1. -1. -1. -1.]	High [1. 1. 1. 1.]
+        # State space:  Low [-inf] x 24         High [inf] x 24
+        num_levels = 2
+        max_horizons = [10]
+
+        overriden_state_space_low = np.array([-10.0] * 24)
+        overriden_state_space_high = np.array([10.0] * 24)
+        state_distance_thresholds = [[0.05] * 24]  #
+
+        action_noise_coeffs = np.array([0.1] * 4)
+        state_noise_coeffs = np.array([0.1] * 24)
+        reward_noise_coeff = 0.5
+
+        reward_low = -20 * max_horizons[0]
+        reward_high = 20 * max_horizons[0]
+        current_env_threshold = 300.0
+
     else:
         raise Exception("Unsupported environment.")
 
@@ -95,8 +121,8 @@ if __name__ == '__main__':
         current_hac_params = HacParams(
             action_low=current_env.action_space.low,
             action_high=current_env.action_space.high,
-            state_low=current_env.observation_space.low,
-            state_high=current_env.observation_space.high,
+            state_low=overriden_state_space_low if overriden_state_space_low is not None else current_env.observation_space.low,
+            state_high=overriden_state_space_high if overriden_state_space_high is not None else current_env.observation_space.high,
             reward_low=reward_low,
             reward_high=reward_high,
             batch_size=current_batch_size,
