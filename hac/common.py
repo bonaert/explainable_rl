@@ -40,17 +40,23 @@ class ActionRepeatEnvWrapper(object):
         for _ in range(self.action_repeat):
             obs_, reward_, done_, info_ = self._env.step(action)
             r = r + reward_
-            if done_ and self.action_repeat != 1:
-                return obs_, 0.0, done_, info_
-            if self.action_repeat == 1:
-                return obs_, r, done_, info_
+
+            if done_:
+                break
         return obs_, self.reward_scale * r, done_, info_
 
 
+def polyak_average(source_network: torch.nn.Module, target_network: torch.nn.Module, polyak_coeff: float):
+    """ Given two networks with the same architecture, updates the parameters in the target network
+    using the parameters of the source network, according to the formula:
+        param_target := param_target * polyak_coeff + (1 - polyak_coeff) * param_source
+    """
+    with torch.no_grad():
+        for param, param_target in zip(source_network.parameters(), target_network.parameters()):
+            # We use the inplace operators to avoid creating a new tensor needlessly
+            param_target.mul_(polyak_coeff)
+            param_target.add_((1 - polyak_coeff) * param.data)
 
-def can_display_env():
-    env = gym.make("Pendulum-v0")
-    env.render()
 
 
 def get_tensor(x: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
