@@ -1,6 +1,7 @@
 import json
 import random
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Tuple, Optional, Union
 
 import numpy as np
@@ -8,13 +9,14 @@ from pathlib import Path
 
 import gym
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from common import get_range_and_center, json_default, FIRST_RUN, ALWAYS
 from ddpg import DDPG
 from sac import Sac
 
-HUGE_PENALTY = -100000
+HUGE_PENALTY = -500
 
 
 # I think we need special logic for the top level agent
@@ -118,9 +120,16 @@ class HacParams:
 
     env_threshold: float
 
+    env_name: str
+
+    # These fields have a default value but the user should be able
+    # to override them.
     use_sac: bool = False  # By default we use DDPG, but we can switch to SAC
+    use_tensorboard: bool = True
+    step_number: int = 0
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
+    # Important: The user shouldn't fill these themselves! The values will be overwritten.
     state_size: int = -1
     action_size: int = -1
 
@@ -136,6 +145,8 @@ class HacParams:
 
     her_storage: List[List[list]] = field(default_factory=list)
     policies: List[Union[Sac, DDPG]] = field(default_factory=list)
+
+    writer: SummaryWriter = field(default_factory=lambda: None)  # Tensorboard writer
 
     def __post_init__(self):
         # This method is executed at the end of the constructor. Here, I can setup the list I need
@@ -179,6 +190,10 @@ class HacParams:
         assert len(self.action_noise_coeffs) == self.action_size, \
             "Action noise has %d dims but the actions have %d dims" % (len(self.action_noise_coeffs), self.action_size)
 
+        if self.use_tensorboard:
+            current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+            self.writer = SummaryWriter(f"logs/{self.env_name}/{current_time}")
+
         self.her_storage = [[] for _ in range(self.num_levels)]
         self.policies = []
         for level in range(self.num_levels):
@@ -190,7 +205,9 @@ class HacParams:
                     action_high=self.subgoal_space_high if level > 0 else self.action_high,
                     q_bound=-self.max_horizons[level] if level < self.num_levels - 1 else None,  # [-H, 0] Q-values for non-top levels
                     buffer_size=self.replay_buffer_size,
-                    batch_size=self.batch_size
+                    batch_size=self.batch_size,
+                    writer=self.get_tensorboard_writer() if self.use_tensorboard else None,
+                    sac_id='Level %d' % level
                 )
             else:
                 agent = DDPG(
@@ -207,6 +224,10 @@ class HacParams:
     def is_top_level(self, level: int) -> bool:
         return level == self.num_levels - 1
 
+    def get_tensorboard_writer(self) -> SummaryWriter:
+        """ Returns a Tensorboard writer, which allows logging many types of information (scalars, images, ...)"""
+        return self.writer
+
 
 def reached_subgoal(state: np.ndarray, env_reward: float, goal: np.ndarray, level: int, hac_params: HacParams) -> bool:
     desired_state, desired_reward = goal[:-1], goal[-1]
@@ -222,9 +243,9 @@ def reached_any_supergoal(current_state: np.ndarray, env_reward: float, subgoals
     return False
 
 
-def compute_transition_reward_and_discount(state: np.ndarray, env_reward: float, goal: np.ndarray, level: int, hac_params: HacParams) -> Tuple[float, float]:
+def compute_transition_reward_and_discount(state: np.ndarray, env_reward: float, goal: np.ndarray, level: int, done: bool, hac_params: HacParams) -> Tuple[float, float]:
     if hac_params.is_top_level(level):
-        reward, discount = env_reward, hac_params.discount
+        reward, discount = env_reward, (1.0 - float(done)) * hac_params.discount
     else:
         if reached_subgoal(state, env_reward, goal, level, hac_params):
             reward, discount = 0.0, 0.0
@@ -249,10 +270,11 @@ def perform_HER(her_storage: List[list], level: int, hac_params: HacParams) -> L
 
     for transition in transitions:
         # We need to update the transition reward (5), the goal (6) and discount (7)
-        # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None)
+        # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None, done)
         tr_next_state = transition[4]
         tr_total_env_reward = transition[3]
-        reward, discount = compute_transition_reward_and_discount(tr_next_state, tr_total_env_reward, chosen_goal, level, hac_params)
+        # The done parameter is irrelevant, since we don't perform HER for the top level
+        reward, discount = compute_transition_reward_and_discount(tr_next_state, tr_total_env_reward, chosen_goal, level, False, hac_params)
         transition[5] = reward
         transition[6] = chosen_goal
         transition[7] = discount
@@ -341,14 +363,14 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         if level > 0:
             # Train level i − 1 using subgoal ai
             subgoals_stack.append(action)
-            next_state, action_reward, lower_level_layer_maxed_out, done = \
-                run_HAC_level(level - 1, current_state, action, env, hac_params, next_is_testing_subgoal, subgoals_stack, training, render)
+            next_state, action_reward, lower_level_layer_maxed_out, done = run_HAC_level(
+                level - 1, current_state, action, env, hac_params, next_is_testing_subgoal, subgoals_stack, training, render
+            )
             assert next_state is not None, "next_state is None!"
             subgoals_stack.pop()
         else:
             next_state, action_reward, done, _ = env.step(action)
-            # if not training:
-            #     print(action)
+            hac_params.step_number += 1
 
             next_state = next_state.astype(np.float32)
             if render:
@@ -360,7 +382,30 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 elif hac_params.num_levels == 3:
                     env.unwrapped.render_goal_2(subgoals_stack[1][:-1], subgoals_stack[0][:-1], env_end_goal)
 
+        # For debugging, log the Q-values
+        if hac_params.use_tensorboard:
+            if random.random() < 0.02:  # Don't log too often to avoid slowing things down
+                value1 = hac_params.policies[level].critic1.forward(current_state, goal, action)
+                value2 = hac_params.policies[level].critic2.forward(current_state, goal, action)
+                value1_target = hac_params.policies[level].critic1_target.forward(current_state, goal, action)
+                value2_target = hac_params.policies[level].critic2_target.forward(current_state, goal, action)
+
+                writer, step_number = hac_params.writer, hac_params.step_number
+                if level == 0:
+                    for action_index in range(action.shape[0]):
+                        writer.add_scalar(f"Action/{action_index} (Level {level})", action[action_index], step_number)
+                else:
+                    writer.add_scalar(f"Action/Predicted reward (Level {level})", action[-1], step_number)
+
+                writer.add_scalar(f"Q-values/Normal Network 1 (Level {level})", value1, step_number)
+                writer.add_scalar(f"Q-values/Normal Network 2 (Level {level})", value2, step_number)
+                writer.add_scalar(f"Q-values/Target Network 1 (Level {level})", value1_target, step_number)
+                writer.add_scalar(f"Q-values/Target Network 2 (Level {level})", value2_target, step_number)
+                # writer.add_scalar("Action/Log prob action", log_prob, step_number)
+
         total_reward += action_reward
+        if hac_params.use_tensorboard:
+            hac_params.writer.add_scalar(f"Rewards/Action reward (level {level})", action_reward, hac_params.step_number)
 
         # Step 3: create replay transitions
         if level > 0 and lower_level_layer_maxed_out:
@@ -396,7 +441,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             # Here, compute_reward_and_discount only looks at the goal directly above (and not the layer upwards)
             # The paper isn't precise about this, but I checked the original code and they do the same
             # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L145
-            action_tr_reward, action_tr_discount = compute_transition_reward_and_discount(next_state, total_reward, goal, level, hac_params)
+            action_tr_reward, action_tr_discount = compute_transition_reward_and_discount(next_state, action_reward, goal, level, done, hac_params)
             action_transition = mk_transition(
                 current_state, hindsight_action, action_reward, total_reward, next_state, action_tr_reward, goal, action_tr_discount
             )
@@ -488,11 +533,17 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, render_rounds: int, num_ev
 
 
 def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: str):
+    running_reward = 0
     for i in tqdm(range(hac_params.num_training_episodes)):
         # Train General-HAC
         state = env.reset()
-        run_hac(hac_params, state, goal_state=None, env=env, training=True, render=False)
+        _, episode_reward, _, done = run_hac(hac_params, state, goal_state=None, env=env, training=True, render=False)
         update_networks(hac_params)
+
+        running_reward = 0.05 * episode_reward + 0.95 * running_reward
+        if hac_params.use_tensorboard:
+            hac_params.writer.add_scalar(f"Rewards/Episode reward", episode_reward, i)
+            hac_params.writer.add_scalar(f"Rewards/Running reward", running_reward, i)
 
         # Evaluate General-HAC
         if i == 0 or (i + 1) % hac_params.evaluation_frequency == 0:
@@ -500,6 +551,10 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
             print("\nStep %d: Success rate (%d/20): %.3f" % (i + 1, num_successes, success_rate))
             # noinspection PyStringFormat
             print("Reward: %.3f +- %.3f" % (np.mean(rewards), np.std(rewards)))
+
+            if hac_params.use_tensorboard:
+                hac_params.writer.add_scalar(f"Eval/Success rate", success_rate, i)
+                hac_params.writer.add_scalar(f"Eval/Mean reward", np.mean(rewards), i)
 
             if success_rate == 1.0:
                 print("Perfect success rate. Stopping training and saving model.")
@@ -519,13 +574,20 @@ def save_hac(hac_params: HacParams, directory="."):
     policies_state_dicts = {f"policy_level_{i}": hac_params.policies[i].state_dict() for i in range(hac_params.num_levels)}
     torch.save(policies_state_dicts, f"{directory}/policies.ckpt")
 
-    # Save the HAC parameters (without the agents and the buffers)
+    # Remove stuff we don't want to save
     policies_backup = hac_params.policies
     hac_params.policies = ["The models are stored in the 'policies.ckpt' file because otherwise this JSON file would be huge and unreadable."
                            "\n The load_hac() will deserialize both this JSON file and the policies, and then merge the results."]
+    writer_backup = hac_params.writer
+    hac_params.writer = None
+
+    # Save the HAC parameters (without the agents and the buffers)
     with open(f'{directory}/hac_params.json', 'w') as f:
         json.dump(hac_params, f, default=json_default, indent=4, sort_keys=True)
+
+    # Re-add the stuff we didn't want to save
     hac_params.policies = policies_backup
+    hac_params.writer = writer_backup
 
 
 def load_hac(directory: str = ".") -> HacParams:

@@ -1,5 +1,5 @@
 import copy
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Optional
 
 import numpy as np
 import torch
@@ -8,6 +8,7 @@ from torch.distributions import Normal
 from torch.nn import functional as F
 from torch.nn.init import uniform_
 from torch.optim import Adam
+from torch.utils.tensorboard import SummaryWriter
 
 from common import get_tensor, ReplayBuffer, polyak_average
 
@@ -123,7 +124,7 @@ class SacCritic(nn.Module):
             total_input = torch.cat([state, action], dim=-1)  # Concatenate to format [states | actions]
 
         # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
-        x = self.layers.forward(total_input) #.squeeze(-1)
+        x = self.layers.forward(total_input)
         if self.has_q_bound:
             return self.q_bound * torch.sigmoid(x)
         else:
@@ -132,7 +133,7 @@ class SacCritic(nn.Module):
 
 class Sac(nn.Module):
     def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray, q_bound: float,
-                 buffer_size: int, batch_size: int):
+                 buffer_size: int, batch_size: int, writer: Optional[SummaryWriter], sac_id: Optional[str]):
         super().__init__()
         self.action_size = len(action_low)
 
@@ -161,6 +162,11 @@ class Sac(nn.Module):
         self.buffer = ReplayBuffer(buffer_size, num_transition_dims=8)
         self.batch_size = batch_size
         self.q_bound = q_bound
+
+        self.step_number = 0
+        self.use_tensorboard = (writer is not None)
+        self.writer = writer
+        self.sac_id = sac_id
 
     def add_to_buffer(self, transition: tuple):
         assert len(transition[1]) == self.action_size
@@ -226,6 +232,11 @@ class Sac(nn.Module):
             actor_loss.backward()
             self.actor_optimizer.step()
 
+            # Log things on tensorboard and console if needed
+            if self.use_tensorboard:
+                self.writer.add_scalar(f"Loss/Policy ({self.sac_id})", actor_loss.item(), self.step_number)
+                self.writer.add_scalar(f"Loss/Value ({self.sac_id})", critic_loss.item(), self.step_number)
+
             # Unfreeze Q-network so you can optimize it at next DDPG step.
             # for p in self.critic.parameters():
             #     p.requires_grad = True
@@ -233,3 +244,5 @@ class Sac(nn.Module):
             polyak_average(self.actor, self.actor_target, self.polyak)
             polyak_average(self.critic1, self.critic1_target, self.polyak)
             polyak_average(self.critic2, self.critic2_target, self.polyak)
+
+            self.step_number += 1

@@ -1,7 +1,7 @@
 import gym
 import numpy as np
 from hac_general import HacParams, evaluate_hac, train, load_hac
-from common import ALWAYS, FIRST_RUN, NEVER, get_args, ActionRepeatEnvWrapper
+from common import get_args, ActionRepeatEnvWrapper
 
 if __name__ == '__main__':
     # noinspection PyUnreachableCode
@@ -67,9 +67,9 @@ if __name__ == '__main__':
         num_levels = 2
         max_horizons = [20]
 
-        overriden_state_space_low = np.array([-10.0] * 24)
-        overriden_state_space_high = np.array([10.0] * 24)
-        state_distance_thresholds = [[0.2] * 24]  #
+        overriden_state_space_low = np.array([-100.0] * 24)
+        overriden_state_space_high = np.array([100.0] * 24)
+        state_distance_thresholds = [[1] * 24]  #
 
         # Not used with SAC
         action_noise_coeffs = np.array([0.5] * 4)
@@ -143,7 +143,8 @@ if __name__ == '__main__':
             evaluation_frequency=evaluation_frequency,
             save_frequency=evaluation_frequency,
             env_threshold=current_env_threshold,
-            use_sac=use_sac
+            env_name=current_env.spec.id,
+            use_sac=use_sac,
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)
