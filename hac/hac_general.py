@@ -135,7 +135,7 @@ class HacParams:
     subgoal_noise_coeffs: np.ndarray = field(default_factory=lambda: None)
 
     her_storage: List[List[list]] = field(default_factory=list)
-    policies: List[Union[DDPG, Sac]] = field(default_factory=list)
+    policies: List[Union[Sac, DDPG]] = field(default_factory=list)
 
     def __post_init__(self):
         # This method is executed at the end of the constructor. Here, I can setup the list I need
@@ -186,8 +186,8 @@ class HacParams:
                 agent = Sac(
                     state_size=self.state_size,
                     goal_size=self.subgoal_size if level != self.num_levels - 1 else 0,  # No goal for the top level
-                    action_range=self.subgoal_range if level > 0 else self.action_range,
-                    action_center=self.subgoal_center if level > 0 else self.action_center,
+                    action_low=self.subgoal_space_low if level > 0 else self.action_low,
+                    action_high=self.subgoal_space_high if level > 0 else self.action_high,
                     q_bound=-self.max_horizons[level] if level < self.num_levels - 1 else None,  # [-H, 0] Q-values for non-top levels
                     buffer_size=self.replay_buffer_size,
                     batch_size=self.batch_size
@@ -470,13 +470,13 @@ def run_hac(hac_params: HacParams, start_state: np.ndarray, goal_state: Optional
                          is_testing_subgoal=False, subgoals_stack=[], training=training, render=render)
 
 
-def evaluate_hac(hac_params: HacParams, env: gym.Env, render_frequency: int, num_evals=20) -> Tuple[int, float, np.ndarray]:
+def evaluate_hac(hac_params: HacParams, env: gym.Env, render_rounds: int, num_evals=20) -> Tuple[int, float, np.ndarray]:
     rewards = []
     with torch.no_grad():
         num_successes = 0
         for i in range(num_evals):
             state = env.reset()
-            render_now = (render_frequency == ALWAYS) or (render_frequency == FIRST_RUN and i == 0)
+            render_now = (i < render_rounds)
             _, reward, maxed_out, done = run_hac(hac_params, state, goal_state=None, env=env, training=False, render=render_now)
 
             if reward > hac_params.env_threshold:
@@ -487,7 +487,7 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, render_frequency: int, num
     return num_successes, success_rate, np.array(rewards)
 
 
-def train(hac_params: HacParams, env: gym.Env, render_frequency: int, directory: str):
+def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: str):
     for i in tqdm(range(hac_params.num_training_episodes)):
         # Train General-HAC
         state = env.reset()
@@ -496,7 +496,7 @@ def train(hac_params: HacParams, env: gym.Env, render_frequency: int, directory:
 
         # Evaluate General-HAC
         if i == 0 or (i + 1) % hac_params.evaluation_frequency == 0:
-            num_successes, success_rate, rewards = evaluate_hac(hac_params, env, render_frequency=render_frequency)
+            num_successes, success_rate, rewards = evaluate_hac(hac_params, env, render_rounds=render_rounds)
             print("\nStep %d: Success rate (%d/20): %.3f" % (i + 1, num_successes, success_rate))
             # noinspection PyStringFormat
             print("Reward: %.3f +- %.3f" % (np.mean(rewards), np.std(rewards)))

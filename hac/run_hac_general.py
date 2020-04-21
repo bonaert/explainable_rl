@@ -91,12 +91,12 @@ if __name__ == '__main__':
     ########################################
     use_sac = True
     args = get_args()
-    version = 4
+    version = 5
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
-    currently_training = False
-    my_render_frequency = NEVER if args.no_render else FIRST_RUN
+    currently_training = not args.test
+    my_render_rounds = args.render_rounds
     num_training_episodes = 50000
-    evaluation_frequency = 100
+    evaluation_frequency = args.eval_frequency
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
@@ -110,7 +110,7 @@ if __name__ == '__main__':
         current_batch_size = 128  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L56
 
         # discount=0.98  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/master/critic.py#L8
-        current_discount = 0.95
+        current_discount = 0.99
 
         # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L54
         # Note: this parameters is actually more complicated than this, because the buffer size depends on the level
@@ -118,7 +118,8 @@ if __name__ == '__main__':
         # replay_buffer_size=10**7,  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L25
         replay_buffer_size = 2_000_000  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/117d4002e754a53019b5cf7f103946d382488217/utils.py#L4
         subgoal_testing_frequency = 0.3  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L125
-        num_update_steps_when_training = 40  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/agent.py#L40
+        # num_update_steps_when_training = 40  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/agent.py#L40
+        num_update_steps_when_training = 10
 
         current_hac_params = HacParams(
             action_low=current_env.action_space.low,
@@ -145,7 +146,7 @@ if __name__ == '__main__':
             use_sac=use_sac
         )
 
-        train(current_hac_params, current_env, my_render_frequency, directory=current_directory)
+        train(current_hac_params, current_env, my_render_rounds, directory=current_directory)
     else:
         current_hac_params = load_hac(current_directory)
-        evaluate_hac(current_hac_params, current_env, render_frequency=ALWAYS, num_evals=100)
+        evaluate_hac(current_hac_params, current_env, render_rounds=100000, num_evals=100)

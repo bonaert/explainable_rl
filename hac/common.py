@@ -16,6 +16,9 @@ NEVER = 0
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-render", action="store_true")
+    parser.add_argument("--test", action="store_true")
+    parser.add_argument("--render-rounds", type=int, default=1)
+    parser.add_argument("--eval-frequency", type=int, default=100)
     args = parser.parse_args()
     return args
 

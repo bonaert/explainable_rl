@@ -90,8 +90,10 @@ class SacActor(nn.Module):
             log_prob = None
 
         actions = torch.tanh(actions)
-        actions = actions * (self.action_high - self.action_low) / 2 + (self.action_high + self.action_low) / 2
-        return actions, log_prob
+        actions_in_range = actions * (self.action_high - self.action_low) / 2 + (self.action_high + self.action_low) / 2
+
+        # print(f"Mu {mu}\t sigma {std}\tactions {actions}\taction_in_range {actions_in_range}")
+        return actions_in_range, log_prob
 
     def sample_actions(self, state: np.ndarray, goal: np.ndarray, deterministic=False, compute_log_prob=False) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """ Returns the actions as a Numpy array (no gradients will be computed) and optionally its log probability """
@@ -129,17 +131,17 @@ class SacCritic(nn.Module):
 
 
 class Sac(nn.Module):
-    def __init__(self, state_size: int, goal_size: int, action_range: np.ndarray, action_center: np.ndarray, q_bound: float,
+    def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray, q_bound: float,
                  buffer_size: int, batch_size: int):
         super().__init__()
-        self.action_size = len(action_range)
+        self.action_size = len(action_low)
 
         self.critic1 = SacCritic(state_size, goal_size, self.action_size, q_bound)
         self.critic1_target = copy.deepcopy(self.critic1)
         self.critic2 = SacCritic(state_size, goal_size, self.action_size, q_bound)
         self.critic2_target = copy.deepcopy(self.critic2)
 
-        self.actor = SacActor(state_size, goal_size, self.action_size, action_range, action_center)
+        self.actor = SacActor(state_size, goal_size, self.action_size, action_low=action_low, action_high=action_high)
         self.actor_target = copy.deepcopy(self.actor)
 
         self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=0.001)
