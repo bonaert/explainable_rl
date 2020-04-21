@@ -69,15 +69,15 @@ if __name__ == '__main__':
 
         overriden_state_space_low = np.array([-100.0] * 24)
         overriden_state_space_high = np.array([100.0] * 24)
-        state_distance_thresholds = [[1] * 24]  #
+        state_distance_thresholds = [[10] * 24]
 
         # Not used with SAC
         action_noise_coeffs = np.array([0.5] * 4)
         state_noise_coeffs = np.array([0.05] * 24)
         reward_noise_coeff = 0.3
 
-        reward_low = -20 * max_horizons[0]
-        reward_high = 20 * max_horizons[0]
+        reward_low = -200
+        reward_high = 350
         current_env_threshold = 300.0
 
     else:

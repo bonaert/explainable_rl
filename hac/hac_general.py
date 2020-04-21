@@ -12,7 +12,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from common import get_range_and_center, json_default, FIRST_RUN, ALWAYS
+from common import get_range_and_center, json_default
 from ddpg import DDPG
 from sac import Sac
 
@@ -168,6 +168,8 @@ class HacParams:
         assert not np.isinf(self.state_low).any(), "Error: the state space cannot have +-infinite lower bounds"
         assert not np.isinf(self.state_high).any(), "Error: the state space cannot have +-infinite upper bounds"
 
+        # TODO: currently this only works 2 level agent
+        # The top agent in a 3 level thing will probably need to predict reward over 20 * 20 actions!
         self.subgoal_space_low = np.hstack([self.state_low, self.reward_low])
         self.subgoal_space_high = np.hstack([self.state_high, self.reward_high])
 
@@ -412,7 +414,8 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             if training and next_is_testing_subgoal:  # Penalize subgoal ai
                 # Step 3a) Create "subgoal testing transition"
                 # We want to penalize the lower level agent if it didn't reach the subgoal set by this agent
-                did_reach_subgoal = reached_subgoal(next_state, total_reward, goal=action, level=level - 1, hac_params=hac_params)
+                # TODO: ensure it's action_reward and not total reward (as before)
+                did_reach_subgoal = reached_subgoal(next_state, action_reward, goal=action, level=level - 1, hac_params=hac_params)
 
                 # "We use a discount rate of 0 in these transitions to avoid non-stationary transition function issues"
                 # Case 1) Top level: We only add a subgoal penalty if we fail to reach the subgoal
