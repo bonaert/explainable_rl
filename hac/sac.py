@@ -1,4 +1,5 @@
 import copy
+import random
 from typing import List, Union, Tuple, Optional
 
 import numpy as np
@@ -10,7 +11,8 @@ from torch.nn.init import uniform_
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 
-from common import get_tensor, ReplayBuffer, polyak_average
+from common import get_tensor, ReplayBuffer, polyak_average, permissive_get_tensor
+from priorited_buffer import PrioritizedReplayBuffer
 
 
 def make_network(layer_sizes: List[int], activation: torch.nn.Module, output_activation: torch.nn.Module = nn.Identity,
@@ -30,7 +32,8 @@ def make_network(layer_sizes: List[int], activation: torch.nn.Module, output_act
 
 
 # Sigma must be in (e^-20, e^2) = (2e-9, 7.38)
-LOG_SIGMA_MIN = -20
+# Sigma must be in (e^-20, e^2) = (0.01, 7.38)
+LOG_SIGMA_MIN = -10
 LOG_SIGMA_MAX = 2
 
 
@@ -48,14 +51,14 @@ class SacActor(nn.Module):
 
     def __init__(self, state_size: int, goal_size: int, action_size: int, action_low: np.ndarray, action_high: np.ndarray):
         super().__init__()
-        self.layers = make_network([state_size + goal_size, 64, 64], activation=nn.ReLU, output_activation=nn.ReLU)
-        self.mu_layer = nn.Linear(64, action_size)
-        self.sigma_layer = nn.Linear(64, action_size)
+        self.layers = make_network([state_size + goal_size, 256, 256], activation=nn.ReLU, output_activation=nn.ReLU)
+        self.mu_layer = nn.Linear(256, action_size)
+        self.sigma_layer = nn.Linear(256, action_size)
 
         self.action_low = torch.from_numpy(action_low)
         self.action_high = torch.from_numpy(action_high)
 
-        self.has_goal = goal_size > 0
+        self.has_goal = (goal_size > 0)
 
     def forward(self, state: np.ndarray, goal: np.ndarray, deterministic=False, compute_log_prob=True) -> Tuple[torch.Tensor, torch.Tensor]:
         """ Returns the actions and their log probs as a torch Tensors (gradients can be computed)"""
@@ -68,7 +71,7 @@ class SacActor(nn.Module):
         hidden_state = self.layers.forward(total_input)
         mu = self.mu_layer(hidden_state)
         log_std = self.sigma_layer(hidden_state)
-        log_std = LOG_SIGMA_MIN + 0.5 * (LOG_SIGMA_MAX - LOG_SIGMA_MIN) * (torch.tanh(log_std) + 1)
+        log_std = LOG_SIGMA_MIN + (LOG_SIGMA_MAX - LOG_SIGMA_MIN) * (torch.tanh(log_std) + 1) / 2.0
         # log_std = torch.clamp(log_std, LOG_SIGMA_MIN, LOG_SIGMA_MAX)
         std = torch.exp(log_std)
 
@@ -90,8 +93,10 @@ class SacActor(nn.Module):
         else:
             log_prob = None
 
-        actions = torch.tanh(actions)
-        actions_in_range = actions * (self.action_high - self.action_low) / 2 + (self.action_high + self.action_low) / 2
+        actions = torch.tanh(actions)  # The log_prob above takes into account this "tanh squashing"
+        action_center = (self.action_high + self.action_low) / 2
+        action_range = (self.action_high - self.action_low) / 2
+        actions_in_range = action_center + actions * action_range
 
         # print(f"Mu {mu}\t sigma {std}\tactions {actions}\taction_in_range {actions_in_range}")
         return actions_in_range, log_prob
@@ -107,11 +112,11 @@ class SacActor(nn.Module):
 
 
 class SacCritic(nn.Module):
-    def __init__(self, state_size: int, goal_size: int, action_size: int, q_bound: float):
+    def __init__(self, state_size: int, goal_size: int, action_size: int, q_bound: Optional[float]):
         super().__init__()
-        self.layers = make_network([state_size + goal_size + action_size, 64, 64, 1], activation=nn.ReLU)
-        self.has_goal = goal_size > 0
+        self.layers = make_network([state_size + goal_size + action_size, 256, 256, 1], activation=nn.ReLU)
         self.q_bound = q_bound
+        self.has_goal = (goal_size > 0)
         self.has_q_bound = (q_bound is not None)
 
     def forward(self, state: np.ndarray, goal: np.ndarray, action: np.ndarray) -> torch.Tensor:
@@ -133,9 +138,10 @@ class SacCritic(nn.Module):
 
 class Sac(nn.Module):
     def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray, q_bound: float,
-                 buffer_size: int, batch_size: int, writer: Optional[SummaryWriter], sac_id: Optional[str]):
+                 buffer_size: int, batch_size: int, writer: Optional[SummaryWriter], sac_id: Optional[str], use_priority_replay: bool):
         super().__init__()
         self.action_size = len(action_low)
+        self.use_priority_replay = use_priority_replay
 
         self.critic1 = SacCritic(state_size, goal_size, self.action_size, q_bound)
         self.critic1_target = copy.deepcopy(self.critic1)
@@ -145,8 +151,8 @@ class Sac(nn.Module):
         self.actor = SacActor(state_size, goal_size, self.action_size, action_low=action_low, action_high=action_high)
         self.actor_target = copy.deepcopy(self.actor)
 
-        self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=0.001)
-        self.actor_optimizer = Adam(self.actor.parameters(), lr=0.001)
+        self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=3e-4)
+        self.actor_optimizer = Adam(self.actor.parameters(), lr=3e-4)
 
         # Optimization for speed: don't compute gradients for the target networks, since we will never use them
         for network in [self.actor_target, self.critic1_target, self.critic2_target]:
@@ -154,12 +160,18 @@ class Sac(nn.Module):
                 parameter.requires_grad = False
 
         self.polyak = 0.995  # TODO: add this to params
-        self.alpha = 0.2  # TODO: add this to params
+        self.alpha = 0.01  # TODO: add this to params
 
         # 8 transitions dims: (current_state, action, env_reward, total_reward, next_state, transition_reward, current_goal, discount)
         # NOTE: they use some more complicated logic (which depends on the level) to determinate the size of the buffer
         # TODO: this is a simplfication. See if it works anyway.
-        self.buffer = ReplayBuffer(buffer_size, num_transition_dims=8)
+        # self.buffer = PrioritizedReplayBuffer(buffer_size, num_transition_dims=8)
+
+        if use_priority_replay:
+            self.buffer = PrioritizedReplayBuffer(buffer_size, num_transition_dims=8)
+        else:
+            self.buffer = ReplayBuffer(buffer_size, num_transition_dims=8)
+
         self.batch_size = batch_size
         self.q_bound = q_bound
 
@@ -168,12 +180,28 @@ class Sac(nn.Module):
         self.writer = writer
         self.sac_id = sac_id
 
+    def get_error(self, transition: tuple) -> float:
+        state, action, _, _, next_state, reward, goal, discount = [permissive_get_tensor(x) for x in transition]
+        target_q_values, values1, values2 = self.get_target_q_values(reward, discount, next_state, goal)
+        predicted_q_values1 = self.critic1.forward(state, goal, action)
+        predicted_q_values2 = self.critic2.forward(state, goal, action)
+
+        return self.get_td_error(predicted_q_values1, predicted_q_values2, target_q_values).item()
+
+    def get_td_error(self, predicted_q_values1: torch.Tensor, predicted_q_values2: torch.Tensor, target_q_values: torch.Tensor) -> torch.Tensor:
+        return (target_q_values - predicted_q_values1).abs() + (target_q_values - predicted_q_values2).abs()
+
     def add_to_buffer(self, transition: tuple):
         assert len(transition[1]) == self.action_size
-        self.buffer.add(transition)
+        if self.use_priority_replay:
+            # noinspection PyArgumentList
+            self.buffer.add(error=self.get_error(transition), transition=transition)
+        else:
+            self.buffer.add(transition)
 
     def add_many_to_buffer(self, transitions: List[tuple]):
-        self.buffer.add_many(transitions)
+        for transition in transitions:
+            self.add_to_buffer(transition)
 
     def sample_action(self, state: np.ndarray, goal: np.ndarray, deterministic=False) -> np.ndarray:
         with torch.no_grad():
@@ -188,28 +216,22 @@ class Sac(nn.Module):
             # Step 1: get the transitions and the next actions for the next state
             states, actions, env_rewards, total_env_rewards, next_states, rewards, goals, discounts = self.buffer.get_batch(self.batch_size)
 
-            # The actions for the next state come from **current** policy (not from the target policy)
-            next_actions, log_next_actions = self.actor(next_states, goals)
-
             # Step 2: improve the critic
-            with torch.no_grad():  # No need to compute gradients for this
-                values1 = self.critic1_target(next_states, goals, next_actions)
-                values2 = self.critic2_target(next_states, goals, next_actions)
-                target_q_values = rewards + discounts * (torch.min(values1, values2).squeeze() - self.alpha * log_next_actions)
-                target_q_values = target_q_values.unsqueeze(1)
-                # We clamp the Q-values to be in [-H, 0] if we're not at the top level. Why would this be needed given that the critic already
-                # outputs values in this range? Well, it's true, the critic does do that, but the target
-                # expression is r + alpha * Q(s', a') and that might go outside of [-H, 0]. We don't want
-                # that to happen, so we clamp it to the range. This will thus incentivize the critic to predict
-                # values in [-H, 0], but since the critic can already only output values in that range, it's perfect.
-                # Of course, this is not a coincidence but done by design.
-                if self.q_bound is not None:  # It's None for the top-level, since we don't know in advance the total reward range
-                    target_q_values = torch.clamp(target_q_values, min=self.q_bound, max=0.0)
-
-            self.critic_optimizer.zero_grad()
+            target_q_values, values1, values2 = self.get_target_q_values(rewards, discounts, next_states, goals)
             predicted_q_values1 = self.critic1(states, goals, actions)
             predicted_q_values2 = self.critic2(states, goals, actions)
-            critic_loss = F.mse_loss(predicted_q_values1, target_q_values) + F.mse_loss(predicted_q_values2, target_q_values)
+
+            # Update priority in Priority Replay Buffer if needed
+            if self.use_priority_replay:
+                errors = self.get_td_error(predicted_q_values1, predicted_q_values2, target_q_values)
+                for j in range(self.batch_size):
+                    index = self.buffer.last_indices[j]
+                    self.buffer.update(index, errors[j].item())
+
+            critic_loss = F.smooth_l1_loss(predicted_q_values1, target_q_values) + \
+                          F.smooth_l1_loss(predicted_q_values2, target_q_values)
+
+            self.critic_optimizer.zero_grad()
             critic_loss.backward()
             self.critic_optimizer.step()
 
@@ -224,18 +246,26 @@ class Sac(nn.Module):
             #     p.requires_grad = False
 
             # We want to maximize the q-values of the actions (and therefore minimize -Q_values)
-            self.actor_optimizer.zero_grad()
             new_actions, log_new_actions = self.actor(states, goals)
             values1 = self.critic1(states, goals, new_actions)
             values2 = self.critic2(states, goals, new_actions)
             actor_loss = (self.alpha * log_new_actions - torch.min(values1, values2)).mean()
+
+            self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
 
             # Log things on tensorboard and console if needed
-            if self.use_tensorboard:
-                self.writer.add_scalar(f"Loss/Policy ({self.sac_id})", actor_loss.item(), self.step_number)
-                self.writer.add_scalar(f"Loss/Value ({self.sac_id})", critic_loss.item(), self.step_number)
+            if self.use_tensorboard and i == 0:
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Policy", actor_loss.item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Value", critic_loss.item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Log Prob", log_new_actions[0].item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Target", target_q_values[0].item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Predicted 1", predicted_q_values1[0].item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Values 1", values2[0].item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Predicted 2", predicted_q_values2[0].item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Values 2", values1[0].item(), self.step_number)
+                self.writer.add_scalar(f"Loss/({self.sac_id}) Reward", rewards[0].item(), self.step_number)
 
             # Unfreeze Q-network so you can optimize it at next DDPG step.
             # for p in self.critic.parameters():
@@ -246,3 +276,24 @@ class Sac(nn.Module):
             polyak_average(self.critic2, self.critic2_target, self.polyak)
 
             self.step_number += 1
+
+    def get_target_q_values(self, rewards: torch.Tensor, discounts: torch.Tensor, next_states: torch.Tensor, goals: torch.Tensor):
+        with torch.no_grad():  # No need to compute gradients for this
+            # The actions for the next state come from **current** policy (not from the target policy)
+            next_actions, log_next_actions = self.actor(next_states, goals)
+
+            values1 = self.critic1_target(next_states, goals, next_actions)
+            values2 = self.critic2_target(next_states, goals, next_actions)
+            target_q_values = rewards + discounts * (torch.min(values1, values2).squeeze() - self.alpha * log_next_actions)
+            if target_q_values.ndim != 0:
+                target_q_values = target_q_values.unsqueeze(1)
+            # We clamp the Q-values to be in [-H, 0] if we're not at the top level. Why would this be needed given that the critic already
+            # outputs values in this range? Well, it's true, the critic does do that, but the target
+            # expression is r + alpha * Q(s', a') and that might go outside of [-H, 0]. We don't want
+            # that to happen, so we clamp it to the range. This will thus incentivize the critic to predict
+            # values in [-H, 0], but since the critic can already only output values in that range, it's perfect.
+            # Of course, this is not a coincidence but done by design.
+            if self.q_bound is not None:  # It's None for the top-level, since we don't know in advance the total reward range
+                target_q_values = torch.clamp(target_q_values, min=self.q_bound, max=0.0)
+
+            return target_q_values, values1, values2

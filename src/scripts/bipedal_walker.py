@@ -11,8 +11,9 @@ from src.training.sac import SacParams, sac_train
 import numpy as np
 
 if __name__ == "__main__":
-    env = gym.make('BipedalWalkerHardcore-v3')
-    act_noise, reward_scale = 0.3, 5.0
+    # env = gym.make('BipedalWalkerHardcore-v3')
+    env = gym.make('BipedalWalker-v3')
+    reward_scale = 5.0
 
     ###################################################
     # The trick to solve Bipedal and Bipedal Hardcore #
@@ -67,7 +68,6 @@ if __name__ == "__main__":
             return obs
 
         def step(self, action):
-            # action += act_noise * (-2 * np.random.random(4) + 1)
             r = 0.0
             for _ in range(self.action_repeat):
                 obs_, reward_, done_, info_ = self._env.step(action)

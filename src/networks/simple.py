@@ -266,8 +266,10 @@ class SacPolicy(nn.Module):
         else:
             log_prob = None
 
-        actions = torch.tanh(actions)
-        actions = actions * (self.action_high - self.action_low) / 2 + (self.action_high + self.action_low) / 2
+        actions = torch.tanh(actions)  # The log_prob above takes into account this "tanh squashing"
+        action_center = (self.action_high + self.action_low) / 2
+        action_range = (self.action_high - self.action_low) / 2
+        actions = action_center + actions * action_range
         return actions, log_prob
 
     def get_actions(self, state: torch.Tensor, deterministic=False, compute_log_prob=False) \

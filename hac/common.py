@@ -1,12 +1,10 @@
 import dataclasses
 from collections import deque
-from typing import Union, List, Tuple
-import gym
+from typing import Union, List, Tuple, Optional
 
 import numpy as np
 import torch
 import argparse
-
 
 ALWAYS = 2
 FIRST_RUN = 1
@@ -18,16 +16,17 @@ def get_args():
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--render-rounds", type=int, default=1)
+    parser.add_argument("--ignore-rewards-except-top-level", action="store_true")
     parser.add_argument("--eval-frequency", type=int, default=100)
     args = parser.parse_args()
     return args
 
 
 class ActionRepeatEnvWrapper(object):
-    def __init__(self, env, action_repeat, reward_scale=1):
+    def __init__(self, env, action_repeat=3, reward_scale=1):
+        env.spec.reward_threshold *= reward_scale
         self._env = env
         self.reward_scale = reward_scale
-        env.spec.reward_threshold *= reward_scale
         self.action_repeat = action_repeat
 
     def __getattr__(self, name):
@@ -38,14 +37,18 @@ class ActionRepeatEnvWrapper(object):
         return obs
 
     def step(self, action):
-        # action += act_noise * (-2 * np.random.random(4) + 1)
         r = 0.0
         for _ in range(self.action_repeat):
             obs_, reward_, done_, info_ = self._env.step(action)
             r = r + reward_
 
-            if done_:
-                break
+            # SUPER IMPORTANT: they replace the -100 CRASH reward by 0
+            # e.g. they don't penalize the crash
+            if done_ and self.action_repeat != 1:
+                return obs_, 0.0, done_, info_
+
+            if self.action_repeat == 1:
+                return obs_, self.reward_scale * r, done_, info_
         return obs_, self.reward_scale * r, done_, info_
 
 
@@ -61,9 +64,17 @@ def polyak_average(source_network: torch.nn.Module, target_network: torch.nn.Mod
             param_target.add_((1 - polyak_coeff) * param.data)
 
 
-
 def get_tensor(x: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
     if torch.is_tensor(x):
+        return x.float()
+    else:
+        return torch.tensor(x, dtype=torch.float32)
+
+
+def permissive_get_tensor(x: Optional[Union[np.ndarray, torch.Tensor]]) -> Optional[torch.Tensor]:
+    if x is None:
+        return None
+    elif torch.is_tensor(x):
         return x.float()
     else:
         return torch.tensor(x, dtype=torch.float32)
@@ -88,7 +99,7 @@ class ReplayBuffer:
             self.add(transition)
 
     def get_batch(self, batch_size: int) -> List[torch.Tensor]:
-        indices = np.random.randint(low=0, high=len(self.buffers[0]), size=batch_size)
+        indices = np.random.randint(low=0, high=self.size(), size=batch_size)
         results = []
         for buffer in self.buffers:
             values_list = [buffer[index] for index in indices]

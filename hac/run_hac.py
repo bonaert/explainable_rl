@@ -9,8 +9,9 @@ if __name__ == '__main__':
     #     Environment parameters     #
     ##################################
     # env_name = "AntMaze"
-    env_name = "MountainCar"
+    # env_name = "MountainCar"
     # env_name = "Pendulum"
+    env_name = "LunarLanderContinuous-v2"
     if env_name == "AntMaze":
         # distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # max_horizons = 10  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
@@ -50,6 +51,19 @@ if __name__ == '__main__':
                                [0.05, 0.05, 0.4]]
         action_noise_coeffs = np.array([0.1])
         subgoal_noise_coeffs = np.array([0.02, 0.02, 0.5])
+    elif env_name == "LunarLanderContinuous-v2":
+        # Action space: Low [-1. -1.]	High [1. 1.]
+        # State space:  Low [-inf] x 8         High [inf] x 8
+        # State: x, y, vel.x, vel.y, lander.angle, angular_velocity, bool(left left on ground), bool(right leg on ground)
+        current_env = gym.make("LunarLanderContinuous-v2")
+        current_goal_state = np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0])
+
+        num_levels = 2
+        max_horizons = [10, 40]
+        distance_thresholds = [[0.1, 0.05, 0.05, 0.05, 0.1, 0.1, 2, 2],
+                               [0.1, 0.02, 0.01, 0.01, 0.05, 0.02, 2, 2]]
+        action_noise_coeffs = np.array([0.05, 0.05])
+        subgoal_noise_coeffs = np.array([0.02, 0.02, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05])
     else:
         raise Exception("Unsupported environment.")
 
@@ -62,7 +76,7 @@ if __name__ == '__main__':
     args = get_args()
     version = 2
     current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
-    currently_training = False
+    currently_training = True
     render_frequency = NEVER if args.no_render else FIRST_RUN
     num_training_episodes = 5000
     evaluation_frequency = 50

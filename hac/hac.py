@@ -193,6 +193,9 @@ class HacParams:
     policies: List[DDPG] = field(default_factory=list)
 
     def __post_init__(self):
+        self.state_low = np.array([-2, -5, -3, -3, -10, -10, 0, 0], dtype=np.float32)
+        self.state_high = np.array([2, 5, 3, 3, 20, 10, 1, 1], dtype=np.float32)
+
         # This method is executed at the end of the constructor. Here, I can setup the list I need
         # I do some validation then setup some variables with their real value
         # This is useful for the user, which doesn't have to it themselves and saves work
@@ -292,7 +295,10 @@ def get_random_action(level: int, env: gym.Env) -> np.ndarray:
     if level == 0:
         return np.random.uniform(env.action_space.low, env.action_space.high)
     else:
-        return np.random.uniform(env.observation_space.low, env.observation_space.high)
+        state_low, state_high = env.observation_space.low, env.observation_space.high
+        state_low = np.array([-2, -5, -3, -3, -10, -10, 0, 0], dtype=np.float32)
+        state_high = np.array([2, 5, 3, 3, 20, 10, 1, 1], dtype=np.float32)
+        return np.random.uniform(state_low, state_high)
 
 
 def add_noise(action: np.ndarray, level: int, env: gym.Env, hac_params: HacParams) -> np.ndarray:
@@ -357,10 +363,11 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         else:
             next_state, _, _, _ = env.step(action)
             if render:
-                if hac_params.num_levels == 2:
-                    env.unwrapped.render_goal(*subgoals_stack[::-1])
-                elif hac_params.num_levels == 3:
-                    env.unwrapped.render_goal_2(*subgoals_stack[::-1])
+                env.render()
+                # if hac_params.num_levels == 2:
+                #     env.unwrapped.render_goal(*subgoals_stack[::-1])
+                # elif hac_params.num_levels == 3:
+                #     env.unwrapped.render_goal_2(*subgoals_stack[::-1])
 
         # Step 3: create replay transitions
         if level > 0 and lower_level_layer_maxed_out:

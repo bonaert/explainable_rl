@@ -1,6 +1,5 @@
 tqdm
 torchvision
-tensorboardX
 pyswarm
 pyswarms
 joblib
