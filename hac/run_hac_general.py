@@ -10,9 +10,9 @@ if __name__ == '__main__':
     ##################################
     # env_name = "AntMaze"
     # env_name = "MountainCar"
-    env_name = "Pendulum"
+    # env_name = "Pendulum"
     # env_name = "BipedalWalker-v3"
-    # env_name = "LunarLanderContinuous-v2"
+    env_name = "LunarLanderContinuous-v2"
 
     overriden_state_space_low = None
     overriden_state_space_high = None
@@ -96,6 +96,8 @@ if __name__ == '__main__':
         current_env = ActionRepeatEnvWrapper(current_env, action_repeat=1, reward_scale=reward_scale)
         num_levels = 2
         max_horizons = [10]
+
+        current_goal_state = np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0])
 
         # State spaces we can pick goals from: [-10, 10] for values and [-100, 100] for lidar values
         overriden_state_space_low = np.array([-2, -5, -3, -3, -10, -10, 0, 0], dtype=np.float32)
@@ -193,6 +195,7 @@ if __name__ == '__main__':
             use_sac=use_sac,
             all_levels_maximize_reward=all_levels_maximize_reward,
             num_test_episodes=current_num_test_episodes,
+            goal_state=current_goal_state,
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)

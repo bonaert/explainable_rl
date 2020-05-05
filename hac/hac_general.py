@@ -129,9 +129,11 @@ class HacParams:
     # to override them.
     use_sac: bool = False  # By default we use DDPG, but we can switch to SAC
     all_levels_maximize_reward: bool = False
+    reward_present_in_state: bool = False
     use_tensorboard: bool = True
     step_number: int = 0
     num_test_episodes: int = 10
+    goal_state: np.ndarray = None
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
     # Important: The user shouldn't fill these themselves! The values will be overwritten.
@@ -302,7 +304,7 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[np.nda
 
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
-    random_transition = random.choice(transitions)
+    random_transition = transitions[-1]  # TODO(maybe revert?): random.choice(transitions)
     chosen_goal = np.hstack([random_transition[4], random_transition[3]])
     #                            next_state          total_env_reward
 
@@ -433,8 +435,10 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
 
             if render:
                 env_end_goal = np.array([0.0, 1.0, 0.0]) if env.spec.id == 'Pendulum-v0' else np.array([0.48, 0.04])
-                if env.spec.id.startswith("Bipedal") or env.spec.id.startswith("Lunar"):
+                if env.spec.id.startswith("Bipedal"):
                     env.render()
+                elif env.spec.id.startswith("Lunar"):
+                    env.render(goal1=subgoals_stack[-1][:-1])
                 elif hac_params.num_levels == 2:
                     env.unwrapped.render_goal(subgoals_stack[0][:-1], env_end_goal)
                 elif hac_params.num_levels == 3:
