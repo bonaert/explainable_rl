@@ -143,6 +143,7 @@ if __name__ == '__main__':
     my_render_rounds = 2  # args.render_rounds
     current_num_test_episodes = 5
     all_levels_maximize_reward = not args.ignore_rewards_except_top_level
+    reward_present_in_input = True
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
@@ -194,6 +195,7 @@ if __name__ == '__main__':
             penalty_subgoal_reachability=penalty_subgoal_reachability,
             use_sac=use_sac,
             all_levels_maximize_reward=all_levels_maximize_reward,
+            reward_present_in_input=reward_present_in_input,
             num_test_episodes=current_num_test_episodes,
             goal_state=current_goal_state,
         )

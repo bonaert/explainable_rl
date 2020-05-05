@@ -306,8 +306,9 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[np.nda
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
     random_transition = transitions[-1]  # TODO(maybe revert?): random.choice(transitions)
-    chosen_goal = np.hstack([random_transition[4], random_transition[3]])
-    #                            next_state          total_env_reward
+    next_input, total_env_reward = random_transition[4], random_transition[3]
+    next_state = get_state_from_input(next_input, level, hac_params)
+    chosen_goal = np.hstack([next_state, total_env_reward])
 
     new_subgoals_stack = subgoals_stack[:]
     new_subgoals_stack[-1] = chosen_goal
@@ -315,7 +316,7 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[np.nda
     for i, transition in enumerate(transitions):
         # We need to update the transition reward (5), the goal (6) and discount (7)
         # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None, done)
-        tr_next_state = transition[4]
+        tr_next_state = get_state_from_input(transition[4], level, hac_params)
         tr_total_env_reward = transition[3]
         # We use the TOTAL env reward, because we want to see if we reached the GOAL ABOVE
         # The done parameter won't be used, since we don't perform HER for the top level and the done parameter is used
@@ -595,11 +596,18 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
     return current_state, total_reward, current_level_failed_to_reach_its_goal, done, total_num_steps
 
 
-def build_input(current_state: np.ndarray, total_reward: float, level: int, hac_params: HacParams):
+def build_input(state: np.ndarray, total_reward: float, level: int, hac_params: HacParams) -> np.ndarray:
     if hac_params.reward_present_in_input and not hac_params.is_top_level(level):
-        return np.hstack([current_state, total_reward])
+        return np.hstack([state, total_reward])
     else:
-        return current_state
+        return state
+
+
+def get_state_from_input(input: np.ndarray, level: int, hac_params: HacParams) -> np.ndarray:
+    if hac_params.reward_present_in_input and not hac_params.is_top_level(level):
+        return input[:-1]
+    else:
+        return input
 
 
 def update_networks(hac_params: HacParams):
