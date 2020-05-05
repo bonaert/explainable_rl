@@ -145,6 +145,13 @@ if __name__ == '__main__':
     all_levels_maximize_reward = not args.ignore_rewards_except_top_level
     reward_present_in_input = True
 
+    current_batch_size = 128
+    current_discount = 0.95
+    replay_buffer_size = 2_000_000
+    subgoal_testing_frequency = 0.2
+    num_update_steps_when_training = 40
+    learning_rates = [3e-4, 3e-4]
+
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
 
@@ -154,19 +161,20 @@ if __name__ == '__main__':
         #############################
 
         # batch_size=1024  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L43
-        current_batch_size = 128  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L56
+        # current_batch_size = 128  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L56
+        #
+        # # discount=0.98  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/master/critic.py#L8
+        # current_discount = 0.95
+        #
+        # # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L54
+        # # Note: this parameters is actually more complicated than this, because the buffer size depends on the level
+        # # but currently, we're simplying it to a simple constant. TODO: see if this needs fixing
+        # # replay_buffer_size=10**7,  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L25
+        # replay_buffer_size = 2_000_000  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/117d4002e754a53019b5cf7f103946d382488217/utils.py#L4
+        # subgoal_testing_frequency = 0.2  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L125
+        # # num_update_steps_when_training = 40  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/agent.py#L40
+        # num_update_steps_when_training = 40
 
-        # discount=0.98  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/master/critic.py#L8
-        current_discount = 0.95
-
-        # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L54
-        # Note: this parameters is actually more complicated than this, because the buffer size depends on the level
-        # but currently, we're simplying it to a simple constant. TODO: see if this needs fixing
-        # replay_buffer_size=10**7,  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L25
-        replay_buffer_size = 2_000_000  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/117d4002e754a53019b5cf7f103946d382488217/utils.py#L4
-        subgoal_testing_frequency = 0.2  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L125
-        # num_update_steps_when_training = 40  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/agent.py#L40
-        num_update_steps_when_training = 40
 
         current_hac_params = HacParams(
             action_low=current_env.action_space.low,
@@ -198,6 +206,7 @@ if __name__ == '__main__':
             reward_present_in_input=reward_present_in_input,
             num_test_episodes=current_num_test_episodes,
             goal_state=current_goal_state,
+            learning_rates=learning_rates
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)

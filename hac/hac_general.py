@@ -138,6 +138,8 @@ class HacParams:
     use_reward_close_instead_of_above_minimum: bool = False
     desired_reward_closeness: float = 0.5
 
+    learning_rates: Optional[List[float]] = None
+
     # Fields with default value that will be filled with a true value in the __post_init__ method
     # Important: The user shouldn't fill these themselves! The values will be overwritten.
     state_size: int = -1
@@ -179,6 +181,7 @@ class HacParams:
         assert not np.isinf(self.action_high).any(), "Error: the action space cannot have +-infinite upper bounds"
         assert not np.isinf(self.state_low).any(), "Error: the state space cannot have +-infinite lower bounds"
         assert not np.isinf(self.state_high).any(), "Error: the state space cannot have +-infinite upper bounds"
+        assert self.learning_rates is None or len(self.learning_rates) == self.num_levels, "Error: incorrect number of learning rates"
 
         assert len(self.reward_low) == self.num_levels, \
             f"Reward_low has {len(self.reward_low)} values but there are {self.num_levels} levels"
@@ -223,6 +226,7 @@ class HacParams:
                 )
 
             q_bound = None if (self.is_top_level(level) or self.all_levels_maximize_reward) else -self.max_horizons[level]
+            learning_rate = 3e-4 if self.learning_rates is None else self.learning_rates[level]
             if self.use_sac:
                 agent = Sac(
                     state_size=self.state_size if self.is_top_level(level) else self.input_size,
@@ -234,7 +238,8 @@ class HacParams:
                     batch_size=self.batch_size,
                     writer=self.get_tensorboard_writer() if self.use_tensorboard else None,
                     sac_id='Level %d' % level,
-                    use_priority_replay=self.use_priority_replay
+                    use_priority_replay=self.use_priority_replay,
+                    learning_rate=learning_rate
                 )
             else:
                 agent = DDPG(

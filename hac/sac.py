@@ -138,7 +138,8 @@ class SacCritic(nn.Module):
 
 class Sac(nn.Module):
     def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray, q_bound: float,
-                 buffer_size: int, batch_size: int, writer: Optional[SummaryWriter], sac_id: Optional[str], use_priority_replay: bool):
+                 buffer_size: int, batch_size: int, writer: Optional[SummaryWriter], sac_id: Optional[str],
+                 use_priority_replay: bool, learning_rate: float):
         super().__init__()
         self.action_size = len(action_low)
         self.use_priority_replay = use_priority_replay
@@ -151,8 +152,8 @@ class Sac(nn.Module):
         self.actor = SacActor(state_size, goal_size, self.action_size, action_low=action_low, action_high=action_high)
         self.actor_target = copy.deepcopy(self.actor)
 
-        self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=3e-4)
-        self.actor_optimizer = Adam(self.actor.parameters(), lr=3e-4)
+        self.critic_optimizer = Adam(list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=learning_rate)
+        self.actor_optimizer = Adam(self.actor.parameters(), lr=learning_rate)
 
         # Optimization for speed: don't compute gradients for the target networks, since we will never use them
         for network in [self.actor_target, self.critic1_target, self.critic2_target]:
