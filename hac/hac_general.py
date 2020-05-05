@@ -74,14 +74,14 @@ HUGE_PENALTY = -1000
 # There's a problem when I try the 3 level agent: it starts picking subgoals that are immediately reached.
 # I probably need to add transitions that punish this kind of behavior.
 
-def mk_transition(state: np.ndarray, action: np.ndarray, env_reward: float, total_env_reward: float,
-                  next_state: np.ndarray, transition_reward: float, goal: np.ndarray, discount: float):
+def mk_transition(input: np.ndarray, action: np.ndarray, env_reward: float, total_env_reward: float,
+                  next_input: np.ndarray, transition_reward: float, goal: np.ndarray, discount: float):
     """ This function is here just for type-checking and making it easier to ensure the order is correct through the IDE help """
     # Env reward: the reward given by the environment after doing the action
     # Total env reward: the sum of the rewards given by the environment after all the actions the agent has done
     # Transition reward: the reward we chose for this transition, which may be different than the reward given by the environment
     #        0       1         2             3              4              5            6       7
-    return state, action, env_reward, total_env_reward, next_state, transition_reward, goal, discount
+    return input, action, env_reward, total_env_reward, next_input, transition_reward, goal, discount
 
 
 @dataclass
@@ -135,6 +135,8 @@ class HacParams:
     num_test_episodes: int = 10
     goal_state: np.ndarray = None
     stop_episode_on_subgoal_failure: bool = False
+    use_reward_close_instead_of_above_minimum: bool = False
+    desired_reward_closeness: float = 0.5
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
     # Important: The user shouldn't fill these themselves! The values will be overwritten.
@@ -265,7 +267,11 @@ class HacParams:
 def reached_subgoal(state: np.ndarray, env_reward: float, goal: np.ndarray, level: int, hac_params: HacParams) -> bool:
     desired_state, desired_reward = goal[:-1], goal[-1]
     distances = np.abs(state - desired_state)
-    return env_reward >= desired_reward and (distances < hac_params.state_distance_thresholds[level]).all()
+    state_close_enough_to_goal = (distances < hac_params.state_distance_thresholds[level]).all()
+    if hac_params.use_reward_close_instead_of_above_minimum:
+        return abs(env_reward - desired_reward) <= hac_params.desired_reward_closeness and state_close_enough_to_goal
+    else:
+        return env_reward >= desired_reward and state_close_enough_to_goal
 
 
 def reached_any_supergoal(current_state: np.ndarray, env_reward: float, subgoals_stack: List[np.ndarray], level: int, hac_params: HacParams):
