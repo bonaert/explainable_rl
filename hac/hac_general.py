@@ -134,6 +134,7 @@ class HacParams:
     step_number: int = 0
     num_test_episodes: int = 10
     goal_state: np.ndarray = None
+    stop_episode_on_subgoal_failure: bool = False
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
     # Important: The user shouldn't fill these themselves! The values will be overwritten.
@@ -451,6 +452,8 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         # Update total_reward and is_last_step
         total_reward += action_reward
         next_input = build_input(next_state, total_reward, level, hac_params)
+        done = done or (hac_params.stop_episode_on_subgoal_failure and lower_level_failed_to_reach_its_goal)
+
         if hac_params.is_top_level(level):
             is_last_step = done
         else:
