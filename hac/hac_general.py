@@ -129,7 +129,7 @@ class HacParams:
     # to override them.
     use_sac: bool = False  # By default we use DDPG, but we can switch to SAC
     all_levels_maximize_reward: bool = False
-    reward_present_in_state: bool = False
+    reward_present_in_input: bool = False
     use_tensorboard: bool = True
     step_number: int = 0
     num_test_episodes: int = 10
@@ -182,6 +182,7 @@ class HacParams:
         assert len(self.reward_high) == self.num_levels, \
             f"Reward_high has {len(self.reward_high)} values but there are {self.num_levels} levels"
         self.state_size = len(self.state_low)
+        self.input_size = self.state_size + 1 if self.reward_present_in_input else self.state_size
         self.action_size = len(self.action_low)
         self.subgoal_size = self.state_size + 1
 
@@ -221,7 +222,7 @@ class HacParams:
             q_bound = None if (self.is_top_level(level) or self.all_levels_maximize_reward) else -self.max_horizons[level]
             if self.use_sac:
                 agent = Sac(
-                    state_size=self.state_size,
+                    state_size=self.state_size if self.is_top_level(level) else self.input_size,
                     goal_size=self.subgoal_size if not self.is_top_level(level) else 0,
                     action_low=self.subgoal_spaces_low[level] if level > 0 else self.action_low,
                     action_high=self.subgoal_spaces_high[level] if level > 0 else self.action_high,
@@ -234,7 +235,7 @@ class HacParams:
                 )
             else:
                 agent = DDPG(
-                    state_size=self.state_size,
+                    state_size=self.state_size if self.is_top_level(level) else self.input_size,
                     goal_size=self.subgoal_size if level != self.num_levels - 1 else 0,  # No goal for the top level
                     action_range=self.subgoal_ranges[level] if level > 0 else self.action_range,
                     action_center=self.subgoal_centers[level] if level > 0 else self.action_center,
@@ -350,27 +351,26 @@ def add_noise(action: np.ndarray, level: int, env: gym.Env, hac_params: HacParam
     return action
 
 
-def pick_action_and_testing(state: np.ndarray, goal: np.ndarray, level: int, is_testing_subgoal: bool,
+def pick_action_and_testing(input: np.ndarray, goal: np.ndarray, level: int, is_testing_subgoal: bool,
                             env: gym.Env, hac_params: HacParams, training: bool) -> Tuple[np.ndarray, bool]:
     # If the layer above was testing, it requires that everything below it have deterministic (non-noisy)
     # behavior too. Therefore, this level must also be deterministic and be in "testing subgoal" mode
     # where we don't add any noise. Additionally, if we're not training but only evaluating the policy, we don't add noise.
     if is_testing_subgoal or not training:
-        action = hac_params.policies[level].sample_action(state, goal, deterministic=True)
+        action = hac_params.policies[level].sample_action(input, goal, deterministic=True)
         return action, True
 
     # Exploration: Each level uses the following exploration strategy when a level is not involved in subgoal testing.
-    # 20% of actions are sampled uniformly at random from the level’s action space
-    # 80% of actions are the sum of actions sampled from the level’s policy and Gaussian noise
-    # TODO
-    # if random.random() < 0.2:
-    #     action = get_random_action(level, env, hac_params)
-    # else:
-    if hac_params.use_sac:
-        action = hac_params.policies[level].sample_action(state, goal, deterministic=False)
+    # 10% of actions are sampled uniformly at random from the level’s action space
+    # 90% of actions are the sum of actions sampled from the level’s policy and Gaussian noise
+    if random.random() < 0.1:
+        action = get_random_action(level, env, hac_params)
     else:
-        action = hac_params.policies[level].sample_action(state, goal)
-        action = add_noise(action, level, env, hac_params)
+        if hac_params.use_sac:
+            action = hac_params.policies[level].sample_action(input, goal, deterministic=False)
+        else:
+            action = hac_params.policies[level].sample_action(input, goal)
+            action = add_noise(action, level, env, hac_params)
 
     # We start testing a certain fraction lambda of the time, e.g. with a probability lambda
     if random.random() < hac_params.subgoal_testing_frequency:
@@ -386,12 +386,15 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                   level_above_is_testing_subgoal: bool, subgoals_stack: List[np.ndarray],
                   training: bool, render: bool) -> Tuple[np.ndarray, float, bool, bool, int]:
     """ Returns (last state, collected reward, if it failed to reach the goal, done)"""
-    current_state = start_state
     num_steps_taken = 0
     total_num_steps = 0
-    total_reward = 0.0
     num_times_reached_subgoal = 0
     done = False
+
+    current_state = start_state
+    total_reward = 0.0
+    current_input = build_input(current_state, total_reward, level, hac_params)
+
     # At the beginning, we let it do at least one action. Because otherwise it can get stuck in a loop, where
     # 1) level L takes the current state and proposes subgoal A
     # 2) level L - 1 checks if the current state is close enough to A and it is
@@ -402,7 +405,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
 
         # Step 1: sample a (noisy) action from the policy
         action, current_level_is_testing_sugoal = pick_action_and_testing(
-            current_state, goal, level, level_above_is_testing_subgoal, env, hac_params, training
+            current_input, goal, level, level_above_is_testing_subgoal, env, hac_params, training
         )
 
         # Step 2: execute the action, either in the environment (if at the bottom level) or as a subgoal for the
@@ -438,7 +441,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 if env.spec.id.startswith("Bipedal"):
                     env.render()
                 elif env.spec.id.startswith("Lunar"):
-                    env.render(goal1=subgoals_stack[-1][:-1])
+                    env.render()
                 elif hac_params.num_levels == 2:
                     env.unwrapped.render_goal(subgoals_stack[0][:-1], env_end_goal)
                 elif hac_params.num_levels == 3:
@@ -446,6 +449,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
 
         # Update total_reward and is_last_step
         total_reward += action_reward
+        next_input = build_input(next_state, total_reward, level, hac_params)
         if hac_params.is_top_level(level):
             is_last_step = done
         else:
@@ -457,10 +461,10 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             hac_params.writer.add_scalar(f"Rewards/Total reward (level {level})", total_reward, hac_params.step_number)
 
             if random.random() < 0.02:  # More extensive logging; don't log too often to avoid slowing things down
-                value1 = hac_params.policies[level].critic1.forward(current_state, goal, action)
-                value2 = hac_params.policies[level].critic2.forward(current_state, goal, action)
-                value1_target = hac_params.policies[level].critic1_target.forward(current_state, goal, action)
-                value2_target = hac_params.policies[level].critic2_target.forward(current_state, goal, action)
+                value1 = hac_params.policies[level].critic1.forward(current_input, goal, action)
+                value2 = hac_params.policies[level].critic2.forward(current_input, goal, action)
+                value1_target = hac_params.policies[level].critic1_target.forward(current_input, goal, action)
+                value2_target = hac_params.policies[level].critic2_target.forward(current_input, goal, action)
 
                 writer, step_number = hac_params.writer, hac_params.step_number
                 if level == 0:
@@ -490,7 +494,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 else:  # not hac_params.is_top_level(level) and not hac_params.all_levels_maximize_reward:
                     penalty = -hac_params.max_horizons[level]
 
-                testing_tr = mk_transition(current_state, action, action_reward, total_reward, next_state, penalty, goal, discount=0)
+                testing_tr = mk_transition(current_input, action, action_reward, total_reward, next_input, penalty, goal, discount=0)
                 hac_params.policies[level].add_to_buffer(testing_tr)
 
         # Create the 'hindsight action' by using the action if it's good, else replace it by the (state, reward)
@@ -514,7 +518,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 next_state, action_reward, total_reward, goal, subgoals_stack, level, done, is_last_step=is_last_step, hac_params=hac_params
             )
             action_transition = mk_transition(
-                current_state, hindsight_action, action_reward, total_reward, next_state, action_tr_reward, goal, action_tr_discount
+                current_input, hindsight_action, action_reward, total_reward, next_input, action_tr_reward, goal, action_tr_discount
             )
             hac_params.policies[level].add_to_buffer(action_transition)
 
@@ -525,11 +529,12 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             # They need to be a list because they will be completed later on, and tuples don't allow modification in place
             # Things that are missing and will be completed are the transition reward, the goal, and the transition discount
             #                                                                                            TBD   TBD   TBD
-            goal_transition = [current_state, hindsight_action, action_reward, total_reward, next_state, None, None, None]
+            goal_transition = [current_input, hindsight_action, action_reward, total_reward, next_input, None, None, None]
             hac_params.her_storage[level].append(goal_transition)
 
         num_steps_taken += 1
         current_state = next_state
+        current_input = next_input
 
         if hac_params.is_top_level(level):
             finished = done
@@ -588,6 +593,13 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
             hac_params.writer.add_scalar(f"Subgoals/Subgoal success", num_times_reached_subgoal / num_steps_taken, hac_params.step_number)
 
     return current_state, total_reward, current_level_failed_to_reach_its_goal, done, total_num_steps
+
+
+def build_input(current_state: np.ndarray, total_reward: float, level: int, hac_params: HacParams):
+    if hac_params.reward_present_in_input and not hac_params.is_top_level(level):
+        return np.hstack([current_state, total_reward])
+    else:
+        return current_state
 
 
 def update_networks(hac_params: HacParams):
