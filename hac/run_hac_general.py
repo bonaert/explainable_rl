@@ -139,18 +139,18 @@ if __name__ == '__main__':
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     currently_training = not args.test
     num_training_episodes = 50000
-    evaluation_frequency = 10  # args.eval_frequency
-    my_render_rounds = 2  # args.render_rounds
+    evaluation_frequency = 50  # args.eval_frequency
+    my_render_rounds = args.render_rounds
     current_num_test_episodes = 5
     all_levels_maximize_reward = not args.ignore_rewards_except_top_level
     reward_present_in_input = True
 
     current_batch_size = 128
-    current_discount = 0.95
+    current_discount = 0.98
     replay_buffer_size = 2_000_000
-    subgoal_testing_frequency = 0.2
-    num_update_steps_when_training = 40
-    learning_rates = [3e-4, 3e-4]
+    subgoal_testing_frequency = 0.1
+    num_update_steps_when_training = 5
+    learning_rates = [3e-4, 1e-4]
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
@@ -212,4 +212,9 @@ if __name__ == '__main__':
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)
     else:
         current_hac_params = load_hac(current_directory)
-        evaluate_hac(current_hac_params, current_env, render_rounds=100000, num_evals=100)
+        num_successes, success_rate, rewards, steps_per_episode = evaluate_hac(current_hac_params, current_env, render_rounds=100000 if not args.test else 0, num_evals=100)
+        print("\nSuccess rate (%d/%d): %.3f" % (num_successes, len(rewards), success_rate))
+        # noinspection PyStringFormat
+        print("Reward: %.3f +- %.3f" % (np.mean(rewards), np.std(rewards)))
+        # noinspection PyStringFormat
+        print("Number of steps: %.3f +- %.3f" % (np.mean(steps_per_episode), np.std(steps_per_episode)))
