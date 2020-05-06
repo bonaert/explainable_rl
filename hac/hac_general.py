@@ -737,7 +737,7 @@ def load_hac(directory: str = ".") -> HacParams:
         for key, value in hac_params_as_dict.items():
             if type(value) == list and key not in ["policies", "her_storage",
                                                    "subgoal_spaces_low", "subgoal_spaces_high",
-                                                   "subgoal_centers", "subgoal_ranges"]:
+                                                   "subgoal_centers", "subgoal_ranges", "reward_low", "reward_high", "penalty_failure_reach_goal"]:
                 hac_params_as_dict[key] = np.array(value, dtype=np.float32)
 
         hac_params = HacParams(**hac_params_as_dict)
