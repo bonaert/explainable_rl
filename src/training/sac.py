@@ -313,20 +313,24 @@ def sac_run_from_disk(env: gym.Env, has_scaler=True, render=True, run_once=False
     """ Loads a SAC-trained policy (and optionally a observation / state scaler) and then runs them
     on the environment indefinitely (by default) or over a single episode (if desired).
     By default the environment is rendered, but this can be disabled. """
+    sac_policy, scaler = get_policy_and_scaler(env, has_scaler)
+    return sac_run(env, sac_policy, scaler=scaler, render=render, run_once=run_once, get_watershed_info=get_watershed_info)
+
+
+def get_policy_and_scaler(env, has_scaler):
+    """ Loads a SAC-trained policy (and optionally a observation / state scaler)"""
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
-
     sac_policy: SacPolicy = load_model(
         SacPolicy(
             state_dim,
             action_dim,
             np.array([0, 0, 0, 0]),  # Will be replaced by the value in the numpy arrays
-            np.array([1, 1, 1, 1])   # we saved during training (see below)
+            np.array([1, 1, 1, 1])  # we saved during training (see below)
         ),
         env, "policy_target.data"
     )
     sac_policy.action_low = torch.tensor(load_numpy(env, "action_low.data.npy"))
     sac_policy.action_high = torch.tensor(load_numpy(env, "action_high.data.npy"))
-
     scaler = load_scaler(env, "scaler.data") if has_scaler else None
-    return sac_run(env, sac_policy, scaler=scaler, render=render, run_once=run_once, get_watershed_info=get_watershed_info)
+    return sac_policy, scaler
