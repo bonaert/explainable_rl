@@ -219,38 +219,38 @@ def get_path(env: gym.Env, filename: str, scripts_dir_path: Path):
 
 def save_numpy(values: torch.Tensor, env: gym.Env, filename: str):
     """ Saves a Numpy array at the path 'data/{environment name}/{filename}' """
-    np.save(get_path(env, filename, Path.cwd()), values)
+    np.save(get_path(env, filename, Path(__file__)), values)
 
 
 def save_tensor(values: torch.Tensor, env: gym.Env, filename: str):
     """ Saves a Pytorch Tensor at the path 'data/{environment name}/{filename}' """
-    torch.save(values, get_path(env, filename, Path.cwd()))
+    torch.save(values, get_path(env, filename, Path(__file__)))
 
 
 def save_model(model: torch.nn.Module, env: gym.Env, filename: str):
     """ Saves the Pytorch model at the path 'data/{environment name}/{filename}' """
-    torch.save(model.state_dict(), get_path(env, filename, Path.cwd()))
+    torch.save(model.state_dict(), get_path(env, filename, Path(__file__)))
 
 
 def save_scaler(scaler, env: gym.Env, filename: str):
     """ Saves the Scikit-learn scaler at the path 'data/{environment name}/{filename}' """
-    joblib.dump(scaler, get_path(env, filename, scripts_dir_path=Path.cwd()))
+    joblib.dump(scaler, get_path(env, filename, scripts_dir_path=Path(__file__)))
 
 
 def load_numpy(env: gym.Env, filename: str):
     """ Loads the Numpy array at the path 'data/{environment name}/{filename}' """
-    return np.load(get_path(env, filename, Path.cwd().parent))
+    return np.load(get_path(env, filename, Path(__file__).parent))
 
 
 def load_tensor(env: gym.Env, filename: str):
     """ Loads the Pytorch Tensor at the path 'data/{environment name}/{filename}' """
-    full_path = get_path(env, filename, scripts_dir_path=Path.cwd().parent)
+    full_path = get_path(env, filename, scripts_dir_path=Path(__file__).parent)
     return torch.load(full_path).clone().detach()
 
 
 def load_model(model_to_fill: torch.nn.Module, env: gym.Env, filename: str):
     """ Loads into the model to fill that weights that can be found at the path 'data/{environment name}/{filename}' """
-    full_path = get_path(env, filename, scripts_dir_path=Path.cwd().parent)
+    full_path = get_path(env, filename, scripts_dir_path=Path(__file__).parent)
     model_to_fill.load_state_dict(torch.load(full_path))
     model_to_fill.eval()
     return model_to_fill
@@ -258,7 +258,7 @@ def load_model(model_to_fill: torch.nn.Module, env: gym.Env, filename: str):
 
 def load_scaler(env: gym.Env, filename: str):
     """ Returns the Scikit-learn scaler that can be found at the path 'data/{environment name}/{filename}' """
-    full_path = get_path(env, filename, Path.cwd().parent)
+    full_path = get_path(env, filename, Path(__file__).parent)
     return joblib.load(full_path)
 
 
