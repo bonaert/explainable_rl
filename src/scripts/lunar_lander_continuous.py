@@ -61,8 +61,6 @@ if __name__ == "__main__":
         policy_optimizer=Adam(sac_policy.parameters(), lr=1e-3),  # Same LR for both policy and value
         value_optimizer=Adam(value_parameters, lr=1e-3),
         replay_buffer_size=1000000,
-        update_frequency=50,
-        update_start=1000,
         batch_size=100,
         polyak=0.995,
         num_random_action_steps=10000,
@@ -70,6 +68,7 @@ if __name__ == "__main__":
         num_test_episodes=10,
         test_frequency=20
     )
+
     sac_train(env, run_params, sac_params)
 
     env.close()  # To avoid benign but annoying errors when the gym render window closes
