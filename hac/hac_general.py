@@ -454,7 +454,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 if env.spec.id.startswith("Bipedal"):
                     env.render()
                 elif env.spec.id.startswith("Lunar"):
-                    env.render()
+                    env.render(goal=subgoals_stack[0][:-1])
                 elif hac_params.num_levels == 2:
                     env.unwrapped.render_goal(subgoals_stack[0][:-1], env_end_goal)
                 elif hac_params.num_levels == 3:
