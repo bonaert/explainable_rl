@@ -322,7 +322,7 @@ class LunarLander(gym.Env, EzPickle):
             reward = +100
         return np.array(state, dtype=np.float32), reward, done, {}
 
-    def render(self, mode='human', goal=None):
+    def render(self, mode='human', state=None, goal=None):
         from gym.envs.classic_control import rendering
         if self.viewer is None:
             self.viewer = rendering.Viewer(VIEWPORT_W, VIEWPORT_H)
@@ -367,31 +367,38 @@ class LunarLander(gym.Env, EzPickle):
 
             return new_x, new_y, new_vel_x, new_vel_y, new_angle, new_angular_momentum, contact_left, contact_right
 
-        if goal is not None:
-            x, y, vel_x, vel_y, angle, angular_momentum, left_leg, right_leg = goal_vals = state_to_vals(*list(goal))
-            t = rendering.Transform(translation=(x, y), rotation=angle)
-            # Body
-            size = 0.5
-            self.viewer.draw_polygon([(-size, -size), (-size, size), (size, size), (size, -size)],
-                                     color=(0.8, 0.8, 0)).add_attr(t)
-            # Speed
+        def draw_speed(viewer, x, y, vel_x, vel_y):
             speed_scale = math.hypot(vel_x, vel_y) / 5.0
             t_speed = rendering.Transform(translation=(x, y),
                                           rotation=math.atan2(vel_y, vel_x),
                                           scale=(speed_scale, speed_scale))
-            line_size = 0.5
-            self.viewer.draw_polyline([(0.0, 0.0), (1.0, 0.0)],
-                                      color=(1, 0, 0)).add_attr(t_speed)
+            viewer.draw_polyline([(0.0, 0.0), (1.0, 0.0)], color=(1, 0, 0)).add_attr(t_speed)
 
-            # Speed
+        def draw_angular_speed(viewer, x, y, angle, angular_momentum):
             ang_speed_scale = abs(angular_momentum)
             t_ang_speed = rendering.Transform(translation=(x, y),
                                               rotation=angle,
                                               scale=(ang_speed_scale, ang_speed_scale))
             if angular_momentum > 0:
-                self.viewer.draw_polyline([(0.0, 0.0), (0.5, 0.5)], color=(1, 1, 1)).add_attr(t_ang_speed)
+                viewer.draw_polyline([(0.0, 0.0), (0.5, 0.5)], color=(1, 1, 1)).add_attr(t_ang_speed)
             else:
-                self.viewer.draw_polyline([(0.0, 0.0), (-0.5, 0.5)], color=(1, 1, 1)).add_attr(t_ang_speed)
+                viewer.draw_polyline([(0.0, 0.0), (-0.5, 0.5)], color=(1, 1, 1)).add_attr(t_ang_speed)
+
+        if state is not None:
+            s_x, s_y, s_vel_x, s_vel_y, s_angle, s_angular_momentum, s_left_leg, s_right_leg = state_to_vals(*list(state))
+            draw_speed(self.viewer, s_x, s_y, s_vel_x, s_vel_y)
+            draw_angular_speed(self.viewer, s_x, s_y, s_angle, s_angular_momentum)
+
+        if goal is not None:
+            g_x, g_y, g_vel_x, g_vel_y, g_angle, g_angular_momentum, g_left_leg, g_right_leg = state_to_vals(*list(goal))
+            t = rendering.Transform(translation=(g_x, g_y), rotation=g_angle)
+            # Body
+            size = 0.5
+            self.viewer.draw_polygon([(-size, -size), (-size, size), (size, size), (size, -size)],
+                                     color=(0.8, 0.8, 0)).add_attr(t)
+
+            draw_speed(self.viewer, g_x, g_y, g_vel_x, g_vel_y)
+            draw_angular_speed(self.viewer, g_x, g_y, g_angle, g_angular_momentum)
 
         for x in [self.helipad_x1, self.helipad_x2]:
             flagy1 = self.helipad_y
