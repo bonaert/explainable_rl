@@ -496,7 +496,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                 writer.add_scalar(f"Q-values/Target (Level {level}) Network 1", value1_target, step_number)
                 writer.add_scalar(f"Q-values/Target (Level {level}) Network 2", value2_target, step_number)
 
-        # Transition type (3) Replay transitions
+        # Transition type (3) Subgoal testing transitions
         if training and current_level_is_testing_sugoal:
             if level > 0 and lower_level_failed_to_reach_its_goal:
                 # Step 3a) Create "subgoal testing transition"
@@ -612,6 +612,14 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
 
 def build_input(state: np.ndarray, total_reward: float, level: int, hac_params: HacParams) -> np.ndarray:
     if hac_params.reward_present_in_input and not hac_params.is_top_level(level):
+        # We don't put the reward into the state for the top level, because the top level doesn't
+        # have to reach a certain minimum reward. Therefore, it has less of a need to receive the
+        # reward as input and it may be better if we don't give it to the top level agent so that
+        # it can better focus on the state (by ignoring the reward). This might allow faster and
+        # better generalization.
+        #
+        # It's not clear in my head if it would hurt to include it, but since I'm not aware if it's
+        # good, I will stick to the standard practice and not include it in my rewards.
         return np.hstack([state, total_reward])
     else:
         return state
@@ -649,6 +657,8 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, render_rounds: int, num_ev
                 num_successes += 1
             rewards.append(reward)
             num_steps_per_episode.append(total_num_steps)
+
+            print(f"Total reward: {reward}")
 
     success_rate = num_successes / float(num_evals)
     return num_successes, success_rate, np.array(rewards), np.array(num_steps_per_episode)

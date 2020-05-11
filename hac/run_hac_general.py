@@ -135,22 +135,22 @@ if __name__ == '__main__':
     use_sac = True
     use_priority_replay = False
     args = get_args()
-    version = 8
+    version = 10
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     currently_training = not args.test
     num_training_episodes = 50000
     evaluation_frequency = 50  # args.eval_frequency
     my_render_rounds = args.render_rounds
     current_num_test_episodes = 5
-    all_levels_maximize_reward = not args.ignore_rewards_except_top_level
+    all_levels_maximize_reward = True  # not args.ignore_rewards_except_top_level
     reward_present_in_input = True
 
     current_batch_size = 128
     current_discount = 0.98
     replay_buffer_size = 2_000_000
-    subgoal_testing_frequency = 0.1
-    num_update_steps_when_training = 5
-    learning_rates = [3e-4, 1e-4]
+    subgoal_testing_frequency = 0.2
+    num_update_steps_when_training = 40
+    learning_rates = [3e-4, 3e-4]
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
