@@ -19,6 +19,20 @@ NumpyArray = np.ndarray
 Level1Transition = Tuple[NumpyArray, NumpyArray, NumpyArray]
 
 
+def get_plan(agent: SacActor, initial_state: NumpyArray, num_iters: int):
+    # TODO(idea): instead of a fixed number of iterations, stop when the uncertainty gets too high
+    # e.g. show only the steps the future steps the model is confident
+
+    current_state = initial_state
+    goals = []
+    for i in range(num_iters):
+        goal = agent.sample_actions(current_state, goal=None, deterministic=True, compute_log_prob=False)
+        goals.append(goal)
+        current_state = goal
+
+    return goals
+
+
 class Dagger:
     def __init__(self, expert: SacPolicy, level_2_policy: SacActor, level_1_policy: SacActor,
                  horizon_length: int, probability_use_level_1: float, env: gym.Env,
@@ -31,7 +45,7 @@ class Dagger:
         self.reached_goal_fn = reached_goal_fn
 
         self.num_agents_taught = 20
-        self.num_trajectories = 50
+        self.num_trajectories = 20
         self.env = env
 
     def teach_hrl_agent(self) -> Tuple[SacActor, SacActor]:
@@ -134,6 +148,7 @@ class Dagger:
             total_reward = 0.0
             num_steps_with_current_goal = 0
             num_steps_in_episode = 0
+
             while not done:
                 if should_pick_new_goal:
                     goal, logprob2 = current_agent_2.sample_actions(state, goal=None, deterministic=True, compute_log_prob=True)
@@ -144,7 +159,8 @@ class Dagger:
 
                 next_state, reward, done, _ = self.env.step(action)
                 if i < num_episodes_to_render:
-                    self.env.render(goal=goal)
+                    plan_subgoals = get_plan(current_agent_2, state, num_iters=10)
+                    self.env.render(goal=goal, plan_subgoals=plan_subgoals)
 
                 total_reward += reward
                 state = next_state

@@ -322,7 +322,7 @@ class LunarLander(gym.Env, EzPickle):
             reward = +100
         return np.array(state, dtype=np.float32), reward, done, {}
 
-    def render(self, mode='human', state=None, goal=None):
+    def render(self, mode='human', state=None, goal=None, plan_subgoals=None):
         from gym.envs.classic_control import rendering
         if self.viewer is None:
             self.viewer = rendering.Viewer(VIEWPORT_W, VIEWPORT_H)
@@ -399,6 +399,19 @@ class LunarLander(gym.Env, EzPickle):
 
             draw_speed(self.viewer, g_x, g_y, g_vel_x, g_vel_y)
             draw_angular_speed(self.viewer, g_x, g_y, g_angle, g_angular_momentum)
+
+        if plan_subgoals is not None:
+            for i, subgoal in enumerate(plan_subgoals):
+                g_x, g_y, g_vel_x, g_vel_y, g_angle, g_angular_momentum, g_left_leg, g_right_leg = state_to_vals(*list(subgoal))
+                t = rendering.Transform(translation=(g_x, g_y), rotation=g_angle)
+                # Body
+                size = 0.3
+                color = 0.3 + i / len(plan_subgoals) * 0.7
+                self.viewer.draw_polygon([(-size, -size), (-size, size), (size, size), (size, -size)],
+                                         color=(color, color, color)).add_attr(t)
+
+                draw_speed(self.viewer, g_x, g_y, g_vel_x, g_vel_y)
+                draw_angular_speed(self.viewer, g_x, g_y, g_angle, g_angular_momentum)
 
         for x in [self.helipad_x1, self.helipad_x2]:
             flagy1 = self.helipad_y
