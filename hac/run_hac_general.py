@@ -99,10 +99,9 @@ if __name__ == '__main__':
 
         current_goal_state = np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0])
 
-        # State spaces we can pick goals from: [-10, 10] for values and [-100, 100] for lidar values
         overriden_state_space_low = np.array([-2, -5, -3, -3, -10, -10, 0, 0], dtype=np.float32)
         overriden_state_space_high = np.array([2,  5,  3,  3,  20,  10, 1, 1], dtype=np.float32)
-        # Very small distance threshold for values; don't try to predict lidar values (probably impossible)
+
         state_distance_thresholds = [[0.04, 0.05, 0.5, 0.2, 1.0, 1, 0.5, 0.5]]
 
         # Not used with SAC
@@ -135,15 +134,16 @@ if __name__ == '__main__':
     use_sac = True
     use_priority_replay = False
     args = get_args()
-    version = 10
+    version = 11
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    print(f"Current directory: {current_directory}")
     currently_training = not args.test
     num_training_episodes = 50000
     evaluation_frequency = 50  # args.eval_frequency
     my_render_rounds = args.render_rounds
     current_num_test_episodes = 5
-    all_levels_maximize_reward = True  # not args.ignore_rewards_except_top_level
-    reward_present_in_input = True
+    all_levels_maximize_reward = False  # not args.ignore_rewards_except_top_level
+    reward_present_in_input = False
 
     current_batch_size = 128
     current_discount = 0.98

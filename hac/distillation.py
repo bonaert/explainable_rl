@@ -132,7 +132,7 @@ if __name__ == '__main__':
     use_sac = True
     num_levels = 2
     max_horizons = [10]  # This should stay at 20!
-    version = 9
+    version = 11
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     hac_params = load_hac(current_directory)
 
@@ -143,4 +143,7 @@ if __name__ == '__main__':
     # Saving the teached student model
     save_hac(hac_params, directory="./taught/")
     evaluate_hac(hac_params, env, render_rounds=1000, num_evals=1000)
+
+    # This doesn't work, and it's probably because of the behavior cloning problem
+    # I am implementing Dagger as an alternative
 

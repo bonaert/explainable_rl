@@ -76,6 +76,7 @@ if __name__ == '__main__':
     args = get_args()
     version = 2
     current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    print(f"Current directory: {current_directory}")
     currently_training = True
     render_frequency = NEVER if args.no_render else FIRST_RUN
     num_training_episodes = 5000
