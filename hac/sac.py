@@ -9,7 +9,6 @@ from torch.distributions import Normal
 from torch.nn import functional as F
 from torch.nn.init import uniform_
 from torch.optim import Adam
-from torch.utils.tensorboard import SummaryWriter
 from common import get_tensor, ReplayBuffer, polyak_average, permissive_get_tensor
 from priorited_buffer import PrioritizedReplayBuffer
 
@@ -137,7 +136,7 @@ class SacCritic(nn.Module):
 
 class Sac(nn.Module):
     def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray, q_bound: float,
-                 buffer_size: int, batch_size: int, writer: Optional[SummaryWriter], sac_id: Optional[str],
+                 buffer_size: int, batch_size: int, writer, sac_id: Optional[str],
                  use_priority_replay: bool, learning_rate: float):
         super().__init__()
         self.action_size = len(action_low)
