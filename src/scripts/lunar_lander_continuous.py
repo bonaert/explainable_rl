@@ -14,11 +14,11 @@ if __name__ == "__main__":
 
     run_params = RunParams(continuous_actions=True,
                            should_scale_states=True,
-                           render_frequency=100,
+                           render_frequency=0,
                            entropy_coeff=0,
                            entropy_decay=1,
                            gamma=0.99,
-                           use_tensorboard=True,
+                           use_tensorboard=False,
                            env_can_be_solved=False,
                            save_model_frequency=20)
 
