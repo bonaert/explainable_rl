@@ -6,6 +6,9 @@ import numpy as np
 import torch
 import argparse
 
+from nicetypes import NumpyArray
+from training.common import scale_state
+
 ALWAYS = 2
 FIRST_RUN = 1
 NEVER = 0
@@ -13,11 +16,30 @@ NEVER = 0
 
 def get_args():
     parser = argparse.ArgumentParser()
+
+    # Main parameters
+    parser.add_argument("--env-name", type=str, default="NotProvided")
+
+    parser.add_argument("--num-training-episodes", type=int, default=50000)
+    parser.add_argument("--eval-frequency", type=int, default=100)
+    parser.add_argument("--render-rounds", type=int, default=1)
+    parser.add_argument("--num-test-episodes", type=int, default=5)
+
+    parser.add_argument("--subgoal-testing-frequency", type=float, default=0.2)
+
+    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--replay-buffer-size", type=int, default=2_000_000)
+
+    parser.add_argument("--num-update-steps-when-training", type=int, default=40)
+
+    parser.add_argument("--discount", type=int, default=0.98)
+
+    parser.add_argument("--all-levels-maximize-reward", action="store_true")
+    parser.add_argument("--reward-present-in-input", action="store_true")
+
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--test", action="store_true")
-    parser.add_argument("--render-rounds", type=int, default=1)
     parser.add_argument("--ignore-rewards-except-top-level", action="store_true")
-    parser.add_argument("--eval-frequency", type=int, default=100)
     args = parser.parse_args()
     return args
 
@@ -128,3 +150,19 @@ def json_default(obj):
         return dataclasses.asdict(obj)
 
     raise TypeError('Not serializable')
+
+
+def get_plan(agent, initial_state: NumpyArray, num_iters: int, goal_has_reward=False):
+    # TODO(idea): instead of a fixed number of iterations, stop when the uncertainty gets too high
+    # e.g. show only the steps the future steps the model is confident
+
+    current_state = initial_state
+    goals = []
+    for i in range(num_iters):
+        goal = agent.sample_actions(current_state, goal=None, deterministic=True, compute_log_prob=False)
+        if goal_has_reward:
+            goal = goal[:-1]  # Remove the desired reward from the goal (only keep the state)
+        goals.append(goal)
+        current_state = goal
+
+    return goals

@@ -2,20 +2,27 @@ import gym
 import numpy as np
 from hac_general import HacParams, evaluate_hac, train, load_hac
 from common import get_args, ActionRepeatEnvWrapper
+from training.sac import get_policy_and_scaler
 
 if __name__ == '__main__':
     # noinspection PyUnreachableCode
     ##################################
     #     Environment parameters     #
     ##################################
-    # env_name = "AntMaze"
-    # env_name = "MountainCar"
-    # env_name = "Pendulum"
-    # env_name = "BipedalWalker-v3"
-    env_name = "LunarLanderContinuous-v2"
+
+    args = get_args()
+    if args.env_name == "NotProvided":
+        # env_name = "AntMaze"
+        # env_name = "MountainCar"
+        # env_name = "Pendulum"
+        # env_name = "BipedalWalker-v3"
+        env_name = "LunarLanderContinuous-v2"
+    else:
+        env_name = args.env_name
 
     overriden_state_space_low = None
     overriden_state_space_high = None
+    teacher = None
 
     if env_name == "AntMaze":
         # state_distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
@@ -116,6 +123,10 @@ if __name__ == '__main__':
 
         current_env_threshold = 200.0 * reward_scale
         penalty_subgoal_reachability = -1000.0 * reward_scale
+
+        # Teacher stuff
+        teacher, scaler = get_policy_and_scaler(current_env, has_scaler=True)
+        probability_to_use_teacher = 0.5
     else:
         raise Exception("Unsupported environment.")
 
@@ -133,23 +144,22 @@ if __name__ == '__main__':
 
     use_sac = True
     use_priority_replay = False
-    args = get_args()
-    version = 11
+    version = 12
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
     currently_training = not args.test
-    num_training_episodes = 50000
-    evaluation_frequency = 50  # args.eval_frequency
+    num_training_episodes = args.num_training_episodes
+    evaluation_frequency = args.eval_frequency
     my_render_rounds = args.render_rounds
-    current_num_test_episodes = 5
-    all_levels_maximize_reward = False  # not args.ignore_rewards_except_top_level
-    reward_present_in_input = False
+    current_num_test_episodes = args.current_num_test_episodes
+    all_levels_maximize_reward = args.all_levels_maximize_reward
+    reward_present_in_input = args.reward_present_in_input
 
-    current_batch_size = 128
-    current_discount = 0.98
-    replay_buffer_size = 2_000_000
-    subgoal_testing_frequency = 0.2
-    num_update_steps_when_training = 40
+    current_batch_size = args.batch_size
+    current_discount = args.discount
+    replay_buffer_size = args.replay_buffer_size
+    subgoal_testing_frequency = args.subgoal_testing_frequency
+    num_update_steps_when_training = args.num_update_steps_when_training
     learning_rates = [3e-4, 3e-4]
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
@@ -174,7 +184,6 @@ if __name__ == '__main__':
         # subgoal_testing_frequency = 0.2  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L125
         # # num_update_steps_when_training = 40  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/agent.py#L40
         # num_update_steps_when_training = 40
-
 
         current_hac_params = HacParams(
             action_low=current_env.action_space.low,
@@ -206,7 +215,12 @@ if __name__ == '__main__':
             reward_present_in_input=reward_present_in_input,
             num_test_episodes=current_num_test_episodes,
             goal_state=current_goal_state,
-            learning_rates=learning_rates
+            learning_rates=learning_rates,
+
+            # Teacher suff
+            teacher=teacher,
+            state_scaler=scaler,
+            probability_to_use_teacher=probability_to_use_teacher
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)

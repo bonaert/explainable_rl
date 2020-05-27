@@ -9,28 +9,11 @@ from torch.nn import MSELoss
 from torch.optim import Adam
 from tqdm import tqdm
 
-from common import ReplayBuffer
+from common import ReplayBuffer, get_plan
+from nicetypes import NumpyArray, Level1Transition
 from sac import SacActor
 from networks.simple import SacPolicy
 from training.sac import get_policy_and_scaler
-
-NumpyArray = np.ndarray
-#                          State        Goal       Action
-Level1Transition = Tuple[NumpyArray, NumpyArray, NumpyArray]
-
-
-def get_plan(agent: SacActor, initial_state: NumpyArray, num_iters: int):
-    # TODO(idea): instead of a fixed number of iterations, stop when the uncertainty gets too high
-    # e.g. show only the steps the future steps the model is confident
-
-    current_state = initial_state
-    goals = []
-    for i in range(num_iters):
-        goal = agent.sample_actions(current_state, goal=None, deterministic=True, compute_log_prob=False)
-        goals.append(goal)
-        current_state = goal
-
-    return goals
 
 
 class Dagger:
@@ -189,6 +172,7 @@ if __name__ == '__main__':
     # Load teacher
     has_scaler = True
     sac_policy, scaler = get_policy_and_scaler(current_env, has_scaler)
+    # TODO(issue): we're currently ignoring the scaler!
 
     # Load student
     env_name = "LunarLanderContinuous-v2"
