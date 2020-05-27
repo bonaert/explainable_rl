@@ -7,7 +7,6 @@ import gym
 import numpy as np
 import torch
 from torch.optim.optimizer import Optimizer
-from torch.utils.tensorboard import SummaryWriter
 import sklearn.preprocessing
 
 from src.networks.simple import SacPolicy, SacValueEstimator
@@ -91,7 +90,7 @@ def compute_value_loss(batch_transitions: Dict[str, torch.Tensor], sac_params: S
 
 
 def update_models(batch_transitions: Dict[str, torch.Tensor], sac_params: SacParams, run_params: RunParams,
-                  writer: SummaryWriter, step_number: int):
+                  writer, step_number: int):
     """ Updates both the policy and the 2 value networks, and then polyak-updates the corresponding target
     networks. Polyak updating means slightly change the weights of the target network to take into account the
     new weights of the main networks. See polyak_average() for details. """
@@ -136,7 +135,7 @@ def select_action_sac(state: np.ndarray, sac_params: SacParams,
     return sac_params.policy.get_actions(torch.tensor(state).float(), deterministic, compute_log_prob)
 
 
-def test_agent_performance(env: gym.Env, sac_params: SacParams, run_params: RunParams, writer: SummaryWriter,
+def test_agent_performance(env: gym.Env, sac_params: SacParams, run_params: RunParams, writer,
                            test_episode_number: int, scaler: sklearn.preprocessing.StandardScaler):
     """ Tests the agent's performance by running the policy during a certain amount of episodes. The
     average episode reward and episode length are logged on the console and optionally on Tensorboard"""
