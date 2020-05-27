@@ -2,13 +2,13 @@ import json
 import random
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 
 from pathlib import Path
 
 import gym
 import torch
-from torch.utils.tensorboard import SummaryWriter
+
 
 from common import get_range_and_center, json_default, get_plan
 from ddpg import DDPG
@@ -169,7 +169,7 @@ class HacParams:
 
     penalty_failure_reach_goal: List[float] = field(default_factory=list)
 
-    writer: SummaryWriter = field(default_factory=lambda: None)  # Tensorboard writer
+    writer: Any = field(default_factory=lambda: None)  # Tensorboard writer
 
     def __post_init__(self):
         # This method is executed at the end of the constructor. Here, I can setup the list I need
@@ -218,6 +218,7 @@ class HacParams:
             "Action noise has %d dims but the actions have %d dims" % (len(self.action_noise_coeffs), self.action_size)
 
         if self.use_tensorboard:
+            from torch.utils.tensorboard import SummaryWriter
             current_time = datetime.now().strftime('%b%d_%H-%M-%S')
             self.writer = SummaryWriter(f"logs/{self.env_name}/{current_time}")
 
@@ -276,7 +277,7 @@ class HacParams:
     def is_top_level(self, level: int) -> bool:
         return level == self.num_levels - 1
 
-    def get_tensorboard_writer(self) -> SummaryWriter:
+    def get_tensorboard_writer(self):
         """ Returns a Tensorboard writer, which allows logging many types of information (scalars, images, ...)"""
         return self.writer
 
