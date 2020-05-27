@@ -144,14 +144,14 @@ if __name__ == '__main__':
 
     use_sac = True
     use_priority_replay = False
-    version = 12
+    version = 13
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
     currently_training = not args.test
     num_training_episodes = args.num_training_episodes
     evaluation_frequency = args.eval_frequency
     my_render_rounds = args.render_rounds
-    current_num_test_episodes = args.current_num_test_episodes
+    current_num_test_episodes = args.num_test_episodes
     all_levels_maximize_reward = args.all_levels_maximize_reward
     reward_present_in_input = args.reward_present_in_input
 
@@ -216,7 +216,7 @@ if __name__ == '__main__':
             all_levels_maximize_reward=all_levels_maximize_reward,
             reward_present_in_input=reward_present_in_input,
             num_test_episodes=current_num_test_episodes,
-            goal_state=current_goal_state,
+            # goal_state=current_goal_state,
             learning_rates=learning_rates,
 
             # Teacher suff

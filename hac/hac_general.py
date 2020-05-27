@@ -405,7 +405,7 @@ def pick_action_and_testing(input: NumpyArray, goal: NumpyArray, level: int, is_
     # Exploration: Each level uses the following exploration strategy when a level is not involved in subgoal testing.
     # 10% of actions are sampled uniformly at random from the level’s action space
     # 90% of actions are the sum of actions sampled from the level’s policy and Gaussian noise
-    if random.random() < 0.1:
+    if random.random() < 0.1 and hac_params.teacher is None:  # Don't use random actions if there's a teacher
         action = get_random_action(level, env, hac_params)
     else:
         if hac_params.use_sac:
