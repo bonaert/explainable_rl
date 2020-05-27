@@ -40,6 +40,9 @@ def get_args():
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--ignore-rewards-except-top-level", action="store_true")
+
+    parser.add_argument("--use_tensorboard", action="store_true")
+
     args = parser.parse_args()
     return args
 

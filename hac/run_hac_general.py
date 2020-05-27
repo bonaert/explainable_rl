@@ -162,6 +162,8 @@ if __name__ == '__main__':
     num_update_steps_when_training = args.num_update_steps_when_training
     learning_rates = [3e-4, 3e-4]
 
+    use_tensorboard = args.use_tensorboard
+
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
 
@@ -220,7 +222,10 @@ if __name__ == '__main__':
             # Teacher suff
             teacher=teacher,
             state_scaler=scaler,
-            probability_to_use_teacher=probability_to_use_teacher
+            probability_to_use_teacher=probability_to_use_teacher,
+
+            # Logging
+            use_tensorboard=use_tensorboard
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)
