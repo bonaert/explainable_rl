@@ -7,7 +7,6 @@ import torch
 import argparse
 
 from nicetypes import NumpyArray
-from training.common import scale_state
 
 ALWAYS = 2
 FIRST_RUN = 1
