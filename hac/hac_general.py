@@ -342,11 +342,11 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
-    random_transition = transitions[-1]  # TODO(maybe revert?): random.choice(transitions)
+    random_transition = random.choice(transitions)  # TODO(maybe use last one only): transitions[-1]
     total_env_reward, next_input = random_transition[3], random_transition[4]
     next_state = get_state_from_input(next_input, level, hac_params)
-    # TODO(think): should we use total_env_reward or reduce_reward(total_env_reward)?
-    chosen_goal = np.hstack([next_state, total_env_reward])
+    chosen_env_reward = reduce_reward(total_env_reward, percentage=0.5)
+    chosen_goal = np.hstack([next_state, chosen_env_reward])
 
     new_subgoals_stack = subgoals_stack[:]
     new_subgoals_stack[-1] = chosen_goal
@@ -455,8 +455,6 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
         state = next_state
 
         if done:
-            # TODO(think): ensure that the transitions are correct in the done=True case
-            # TODO(think)  This is crucial! If we don't handle this case, we don't handle the case where the agent gets a ton of reward
             break
 
     # Step (2) create the low level transitions
@@ -591,8 +589,11 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
         # Create the 'hindsight action' by using the action if it's good, else replace it by the (state, reward)
         # the lower level actually reached
         if level > 0 and lower_level_failed_to_reach_its_goal:
-            # TODO(think): should we use the raw action_reward? or something like reduce_reward(action_reward)?
-            hindsight_action = np.hstack([next_state, action_reward])  # Replace original action with action executed in hindsight
+            # TODO(think): can I switch to this without creating problems where the action I train on
+            # TODO(think)  is different from the action the agent I actually picked
+            # chosen_reward = reduce_reward(action_reward, percentage=0.5)
+            chosen_reward = action_reward
+            hindsight_action = np.hstack([next_state, chosen_reward])  # Replace original action with action executed in hindsight
         else:
             # There are 2 exception for the action hindsights where we don't replace the subgoal by the next state:
             # 1) If we reached the subgoal, then we can use the action (= subgoal)
