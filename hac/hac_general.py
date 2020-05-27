@@ -3,27 +3,19 @@ import random
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional, Union, Any
-
 from pathlib import Path
 
 import gym
 import torch
-
+import sklearn.preprocessing
 
 from common import get_range_and_center, json_default, get_plan
 from ddpg import DDPG
 from sac import Sac, SacActor
 from nicetypes import *
-
-import sklearn.preprocessing
-
 from training.common import scale_state
 
 HUGE_PENALTY = -1000
-
-
-# I think we need special logic for the top level agent
-
 
 # I need to be clear about what each agent tries to do.
 # What does the actor predict as actions and what does it take as input?
@@ -61,7 +53,6 @@ HUGE_PENALTY = -1000
 # subgoal-reaching layer we can keep [-H, 0]. But would using the real reward better? This would mean that reaching a subgoal
 # with a higher reward would be incentivized than reaching a subgoal with a lower reward. However, not reaching the subgoal would be
 # equally punished for both.
-# On the other hand, the top level layer needs to
 
 # Goals and subgoals are always pairs (desired state, desired reward)
 # On the other hand, the action isn't always a subgoal, sadly...
@@ -73,15 +64,14 @@ HUGE_PENALTY = -1000
 # handle the action details when it's needed
 # And should a subgoal be a tuple or numpy array? I think it's probably easier if it's a numpy array
 
+# TODO(problem): There's a problem when I try the 3 level agent: it starts picking subgoals that are immediately reached.
+# TODO(problem)  I probably need to add transitions that punish this kind of behavior.
 
-# There's a problem when I try the 3 level agent: it starts picking subgoals that are immediately reached.
-# I probably need to add transitions that punish this kind of behavior.
 
-
-def mk_transition(input: np.ndarray, action: np.ndarray, env_reward: float, total_env_reward: float,
-                  next_input: np.ndarray, transition_reward: float, goal: np.ndarray, discount: float):
+def mk_transition(input: NumpyArray, action: NumpyArray, env_reward: float, total_env_reward: float,
+                  next_input: NumpyArray, transition_reward: float, goal: NumpyArray, discount: float):
     """ This function is here just for type-checking and making it easier to ensure the order is correct through the IDE help """
-    # Env reward: the reward given by the environment after doing the action
+    # Env reward: the reward given by the environment to the agent because it did the action
     # Total env reward: the sum of the rewards given by the environment after all the actions the agent has done
     # Transition reward: the reward we chose for this transition, which may be different than the reward given by the environment
     #        0       1         2             3              4              5            6       7
@@ -90,12 +80,11 @@ def mk_transition(input: np.ndarray, action: np.ndarray, env_reward: float, tota
 
 @dataclass
 class HacParams:
+    action_low: NumpyArray
+    action_high: NumpyArray
 
-    action_low: np.ndarray
-    action_high: np.ndarray
-
-    state_low: np.ndarray
-    state_high: np.ndarray
+    state_low: NumpyArray
+    state_high: NumpyArray
 
     reward_low: List[float]
     reward_high: List[float]
@@ -111,25 +100,28 @@ class HacParams:
     state_distance_thresholds: List[List[float]]
     # When adding Normal noise to the actions, we multiply the (high - low) / 2 by these
     # coefficients to ge the desired standard deviation
-    action_noise_coeffs: np.ndarray
-    state_noise_coeffs: np.ndarray
+    # These are used in DDPG, but not in SAC, since SAC introduces noise natively through its entropy maximization
+    # scheme and the use of a Normal Gaussian from which actions are sampled
+    action_noise_coeffs: NumpyArray
+    state_noise_coeffs: NumpyArray
     reward_noise_coeff: float
 
-    num_update_steps_when_training: int
+    num_update_steps_when_training: int  # After the episode ended, we do X iterations of the optimization loop
 
-    evaluation_frequency: int
+    evaluation_frequency: int  # We evaluate the agent every X episodes
 
-    save_frequency: int
+    save_frequency: int  # We save the model every X episodes
 
-    env_threshold: float
+    env_threshold: float  # If the running reward is above this threshold, we solved the environment
 
-    env_name: str
+    env_name: str  # Name of the OpenAI gym environment
 
-    use_priority_replay: bool
+    use_priority_replay: bool  # If True, use a Prioritized Replay Buffer instead of a normal Buffer
 
-    penalty_subgoal_reachability: float
+    penalty_subgoal_reachability: float  # The amount of punishment in the subgoal testing transition when failing to reach the goal
 
-    # Optional teacher
+    # (Optional) Teacher that can help the hierarchy learn
+    # The teacher is used both to learn goal and low level actions, using rollouts of its actions
     teacher: SacActor = None
     state_scaler: sklearn.preprocessing.StandardScaler = None
     probability_to_use_teacher: float = 0.5
@@ -137,17 +129,19 @@ class HacParams:
     # These fields have a default value but the user should be able
     # to override them.
     use_sac: bool = False  # By default we use DDPG, but we can switch to SAC
-    all_levels_maximize_reward: bool = False
-    reward_present_in_input: bool = False
+    all_levels_maximize_reward: bool = False  # If True, all levels maximize the reward while trying to reach the goal.
+                                              # If False, they just try to reach the goal
+    reward_present_in_input: bool = False   # Should the total environment reward be present in the input (could help with goal prediction)
     use_tensorboard: bool = True
     step_number: int = 0
-    num_test_episodes: int = 10
-    goal_state: np.ndarray = None
-    stop_episode_on_subgoal_failure: bool = False
-    use_reward_close_instead_of_above_minimum: bool = False
-    desired_reward_closeness: float = 0.5
+    num_test_episodes: int = 10  # When evaluating the agent, how many episodes should we do?
+    stop_episode_on_subgoal_failure: bool = False  # TODO(explain): why did I do this?
+    use_reward_close_instead_of_above_minimum: bool = False  # If True, the obtained reward must be close to the predicted reward
+                                                             # If False, the obtained reward must be greater than the desired minimum reward
+    desired_reward_closeness: float = 0.5  # If the reward must be close instead of simply above the goal's reward,
+                                           # this is the maximum distance allowed
 
-    learning_rates: Optional[List[float]] = None
+    learning_rates: Optional[List[float]] = None  # Learning rate for each agent in the hierarchy
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
     # Important: The user shouldn't fill these themselves! The values will be overwritten.
@@ -155,14 +149,14 @@ class HacParams:
     action_size: int = -1
 
     # These are going to be overwritten anyway, so I can just initialize them to None
-    action_range: np.ndarray = field(default_factory=lambda: None)
-    action_center: np.ndarray = field(default_factory=lambda: None)
+    action_range: NumpyArray = field(default_factory=lambda: None)
+    action_center: NumpyArray = field(default_factory=lambda: None)
 
-    subgoal_spaces_low: List[np.ndarray] = field(default_factory=list)
-    subgoal_spaces_high: List[np.ndarray] = field(default_factory=list)
-    subgoal_ranges: List[np.ndarray] = field(default_factory=list)
-    subgoal_centers: List[np.ndarray] = field(default_factory=list)
-    subgoal_noises_coeffs: List[np.ndarray] = field(default_factory=list)
+    subgoal_spaces_low: List[NumpyArray] = field(default_factory=list)
+    subgoal_spaces_high: List[NumpyArray] = field(default_factory=list)
+    subgoal_ranges: List[NumpyArray] = field(default_factory=list)
+    subgoal_centers: List[NumpyArray] = field(default_factory=list)
+    subgoal_noises_coeffs: List[NumpyArray] = field(default_factory=list)
 
     her_storage: List[List[list]] = field(default_factory=list)
     policies: List[Union[Sac, DDPG]] = field(default_factory=list)
@@ -172,9 +166,9 @@ class HacParams:
     writer: Any = field(default_factory=lambda: None)  # Tensorboard writer
 
     def __post_init__(self):
-        # This method is executed at the end of the constructor. Here, I can setup the list I need
+        # This method is executed at the end of the constructor.
         # I do some validation then setup some variables with their real value
-        # This is useful for the user, which doesn't have to it themselves and saves work
+        # This is useful for the user, because they don't have to it themselves and saves work
         # It also ensures it's done correctly
         assert 0 <= self.subgoal_testing_frequency <= 1, "Subgoal testing frequency must be between 0 and 1"
         assert 0 <= self.discount <= 1, "Discount must be between 0 and 1"
@@ -200,9 +194,9 @@ class HacParams:
         assert len(self.reward_high) == self.num_levels, \
             f"Reward_high has {len(self.reward_high)} values but there are {self.num_levels} levels"
         self.state_size = len(self.state_low)
-        self.input_size = self.state_size + 1 if self.reward_present_in_input else self.state_size
+        self.input_size = self.state_size + 1 if self.reward_present_in_input else self.state_size  # (State + reward) or State
         self.action_size = len(self.action_low)
-        self.subgoal_size = self.state_size + 1
+        self.subgoal_size = self.state_size + 1  # (State + reward)
 
         # Only used in DDPG
         self.subgoal_noise_coeffs = np.hstack([self.state_noise_coeffs, self.reward_noise_coeff])
@@ -231,6 +225,7 @@ class HacParams:
         self.subgoal_spaces_low, self.subgoal_spaces_high = [None] * self.num_levels, [None] * self.num_levels
         self.subgoal_centers, self.subgoal_ranges = [None] * self.num_levels, [None] * self.num_levels
         for level in range(self.num_levels):
+            # Combine the state ranges and the reward ranges to create the subgoal ranges for each level
             if level > 0:
                 self.subgoal_spaces_low[level] = np.hstack([self.state_low, self.reward_low[level]])
                 self.subgoal_spaces_high[level] = np.hstack([self.state_high, self.reward_high[level]])
@@ -266,6 +261,7 @@ class HacParams:
                 )
             self.policies.append(agent)
 
+        # Create the "penalty_failure_reach_goal" for the case when we try to maximize the reward for the non-top-level policies
         for level in range(self.num_levels - 1):
             min_reward, max_reward = self.reward_low[level + 1], self.reward_high[level + 1]
             assert max_reward >= min_reward, f"Maximum reward ({max_reward}) < Min reward ({min_reward}) at level {level}"
@@ -282,42 +278,52 @@ class HacParams:
         return self.writer
 
     def should_use_teacher(self):
-        assert self.num_levels == 2, "Teacher only available for 2 level hierarchy"
+        assert self.num_levels == 2, "Teacher-guiding currently only implemented for hierarchy with 2 levels"
         return self.teacher is not None and random.random() < self.probability_to_use_teacher
 
 
-def reached_subgoal(state: np.ndarray, env_reward: float, goal: np.ndarray, level: int, hac_params: HacParams) -> bool:
+def reached_subgoal(state: NumpyArray, cumulated_reward: float, goal: NumpyArray, level: int, hac_params: HacParams) -> bool:
+    """ Reached the goal if the state is close enough to the goal, and if the cumulated reward is either
+    above or close enough (depending on a flag) to the desired reward """
     desired_state, desired_reward = goal[:-1], goal[-1]
     distances = np.abs(state - desired_state)
     state_close_enough_to_goal = (distances < hac_params.state_distance_thresholds[level]).all()
     if hac_params.use_reward_close_instead_of_above_minimum:
-        return abs(env_reward - desired_reward) <= hac_params.desired_reward_closeness and state_close_enough_to_goal
+        return abs(cumulated_reward - desired_reward) <= hac_params.desired_reward_closeness and state_close_enough_to_goal
     else:
-        return env_reward >= desired_reward and state_close_enough_to_goal
+        return cumulated_reward >= desired_reward and state_close_enough_to_goal
 
 
-def reached_any_supergoal(current_state: np.ndarray, env_reward: float, subgoals_stack: List[np.ndarray], level: int, hac_params: HacParams):
+def reached_any_supergoal(current_state: NumpyArray, cumulated_reward: float, subgoals_stack: List[NumpyArray], level: int, hac_params: HacParams):
     for subgoal in subgoals_stack:
-        if reached_subgoal(current_state, env_reward, subgoal, level, hac_params):
+        if reached_subgoal(current_state, cumulated_reward, subgoal, level, hac_params):
             return True
 
     return False
 
 
-def compute_transition_reward_and_discount(state: np.ndarray, action_reward: Optional[float], total_env_reward: float, goal: np.ndarray, subgoals_stack: List[np.ndarray],
-                                           level: int, done: bool, is_last_step: bool, hac_params: HacParams) -> Tuple[float, float]:
+def compute_transition_reward_and_discount(next_state: NumpyArray, action_reward: Optional[float], total_env_reward: float,
+                                           goal: NumpyArray, subgoals_stack: List[NumpyArray], level: int, done: bool,
+                                           is_last_step: bool, hac_params: HacParams) -> Tuple[float, float]:
+    """
+    If top level, use the classical reward scheme (reward=reward, discount=discount if not done else 0)
+    For the other levels:
+    - If not maximizing reward, use (reward=0, discount=0) or (reward=-1, discount=discount) reward scheme
+    - If maximizing reward, use (reward=failure_reach_goal, discount=discount if not done else 0) or
+                                (reward=total_env_reward, discount=0) in the success case
+    """
     if hac_params.is_top_level(level):
         reward, discount = action_reward, (1.0 - float(done)) * hac_params.discount
     else:
         if hac_params.all_levels_maximize_reward:
-            if reached_any_supergoal(state, total_env_reward, subgoals_stack, level, hac_params):
+            if reached_any_supergoal(next_state, total_env_reward, subgoals_stack, level, hac_params):
                 reward, discount = total_env_reward, 0.0
             elif is_last_step:
                 reward, discount = hac_params.penalty_failure_reach_goal[level], 0.0
             else:
                 reward, discount = hac_params.penalty_failure_reach_goal[level], hac_params.discount
         else:
-            if reached_subgoal(state, total_env_reward, goal, level, hac_params):
+            if reached_subgoal(next_state, total_env_reward, goal, level, hac_params):
                 reward, discount = 0.0, 0.0
             else:
                 reward, discount = -1.0, hac_params.discount
@@ -325,7 +331,9 @@ def compute_transition_reward_and_discount(state: np.ndarray, action_reward: Opt
     return reward, discount
 
 
-def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[np.ndarray], hac_params: HacParams) -> List[tuple]:
+def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyArray], hac_params: HacParams) -> List[tuple]:
+    """ Complete the hindsight goal transitions, by replacing the goal with one of the attained states in
+    the transitions and then computing the rewards given the new goal """
     if len(her_storage) == 0:  # Can happen if we're directly at a subgoal
         return []
 
@@ -335,8 +343,9 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[np.nda
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
     random_transition = transitions[-1]  # TODO(maybe revert?): random.choice(transitions)
-    next_input, total_env_reward = random_transition[4], random_transition[3]
+    total_env_reward, next_input = random_transition[3], random_transition[4]
     next_state = get_state_from_input(next_input, level, hac_params)
+    # TODO(think): should we use total_env_reward or reduce_reward(total_env_reward)?
     chosen_goal = np.hstack([next_state, total_env_reward])
 
     new_subgoals_stack = subgoals_stack[:]
@@ -345,8 +354,8 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[np.nda
     for i, transition in enumerate(transitions):
         # We need to update the transition reward (5), the goal (6) and discount (7)
         # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None, done)
-        tr_next_state = get_state_from_input(transition[4], level, hac_params)
         tr_total_env_reward = transition[3]
+        tr_next_state = get_state_from_input(transition[4], level, hac_params)
         # We use the TOTAL env reward, because we want to see if we reached the GOAL ABOVE
         # The done parameter won't be used, since we don't perform HER for the top level and the done parameter is used
         # only for the top level, so we arbitrarily set it to False
@@ -362,27 +371,30 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[np.nda
     return completed_transitions
 
 
-def get_random_action(level: int, env: gym.Env, hac_params: HacParams) -> np.ndarray:
+def get_action_low_and_high(env: gym.Env, hac_params: HacParams, level: int) -> Tuple[NumpyArray, NumpyArray]:
     if level == 0:
-        return np.random.uniform(env.action_space.low, env.action_space.high)
+        return env.action_space.low, env.action_space.high
     else:
-        return np.random.uniform(hac_params.subgoal_spaces_low[level], hac_params.subgoal_spaces_high[level])
+        return hac_params.subgoal_spaces_low[level], hac_params.subgoal_spaces_high[level]
 
 
-def add_noise(action: np.ndarray, level: int, env: gym.Env, hac_params: HacParams) -> np.ndarray:
-    if level == 0:
-        action_low, action_high = env.action_space.low, env.action_space.high
-    else:
-        action_low, action_high = hac_params.subgoal_spaces_low[level], hac_params.subgoal_spaces_high[level]
+def get_random_action(level: int, env: gym.Env, hac_params: HacParams) -> NumpyArray:
+    return np.random.uniform(*get_action_low_and_high(env, hac_params, level))
 
+
+def add_noise(action: NumpyArray, level: int, env: gym.Env, hac_params: HacParams) -> NumpyArray:
     noise_coeff = hac_params.action_noise_coeffs if level == 0 else hac_params.subgoal_noise_coeffs
     action += np.random.normal(0, noise_coeff)  # I'm using the Pytorch's implementation, it's different in the original TF one
+
+    action_high, action_low = get_action_low_and_high(env, hac_params, level)
     action = np.clip(action, action_low, action_high)
+
     return action
 
 
-def pick_action_and_testing(input: np.ndarray, goal: np.ndarray, level: int, is_testing_subgoal: bool,
-                            env: gym.Env, hac_params: HacParams, training: bool) -> Tuple[np.ndarray, bool]:
+def pick_action_and_testing(input: NumpyArray, goal: NumpyArray, level: int, is_testing_subgoal: bool,
+                            env: gym.Env, hac_params: HacParams, training: bool) -> Tuple[NumpyArray, bool]:
+    """ Returns the action (with maybe added noise) and whether we're go in testing mode """
     # If the layer above was testing, it requires that everything below it have deterministic (non-noisy)
     # behavior too. Therefore, this level must also be deterministic and be in "testing subgoal" mode
     # where we don't add any noise. Additionally, if we're not training but only evaluating the policy, we don't add noise.
@@ -413,8 +425,8 @@ def pick_action_and_testing(input: np.ndarray, goal: np.ndarray, level: int, is_
 
 def reduce_reward(reward: float, percentage=0.1) -> float:
     """
-    reduce_reward(100, 0.1) = 90
-    reduce_reward(-100, 0.1) = -110
+    reduce_reward(100, 0.1)  =  100 - 100 * 0.1 =  100 - 10 =  90
+    reduce_reward(-100, 0.1) = -100 - 100 * 0.1 = -100 - 10 = -110
     """
     return reward - abs(reward) * percentage
 
@@ -425,7 +437,12 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
     total_reward = 0.0
     next_state = None
     incomplete_transitions = []
-    for i in range(hac_params.max_horizons[0]):
+
+    # Decide the number of steps
+    horizon_length = hac_params.max_horizons[0]
+    num_steps = random.randint(int(0.75 * horizon_length), horizon_length)
+
+    for i in range(num_steps):
         scaled_state = scale_state(hac_params.state_scaler, state) if hac_params.state_scaler is not None else state
         action = hac_params.teacher.get_actions(torch.tensor(scaled_state).float())
         next_state, reward, done, _ = env.step(action)
@@ -438,24 +455,29 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
         state = next_state
 
         if done:
+            # TODO(think): ensure that the transitions are correct in the done=True case
+            # TODO(think)  This is crucial! If we don't handle this case, we don't handle the case where the agent gets a ton of reward
             break
 
     # Step (2) create the low level transitions
-    final_state, reduced_total_reward = next_state, reduce_reward(total_reward)
+    assert not hac_params.all_levels_maximize_reward, "Teacher-guiding currently not compatible with all levels maximizing reward"
+    assert not hac_params.reward_present_in_input, "Teacher-guiding currently not compatible with reward present in input"
+
+    final_state, reduced_total_reward = next_state, reduce_reward(total_reward, percentage=0.5)
     goal = np.hstack([final_state, reduced_total_reward])
     bottom_level_transitions = []
-    for (state, action, next_state, reward, accumulated_reward) in incomplete_transitions:
-        if reached_subgoal(state, accumulated_reward, goal, level=0, hac_params=hac_params):
+    for (state, action, next_state, reward, cumulated_reward) in incomplete_transitions:
+        if reached_subgoal(state, cumulated_reward, goal, level=0, hac_params=hac_params):
             tr_reward, discount = 0.0, 0.0
         else:
             tr_reward, discount = -1.0, hac_params.discount
 
         bottom_level_transitions.append(mk_transition(
-            state, action, reward, accumulated_reward, next_state, tr_reward, goal, discount
+            state, action, reward, cumulated_reward, next_state, tr_reward, goal, discount
         ))
 
     # Step (3) return all the relevant info
-    lower_level_steps_taken = hac_params.max_horizons[0]
+    lower_level_steps_taken = len(bottom_level_transitions)
 
     return final_state, total_reward, done, lower_level_steps_taken, bottom_level_transitions
 
@@ -464,11 +486,10 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
 #                    LunarLander, maybe I should add that too
 #                    some features have super small values and that might make it much harder
 #                    to learn
-
-def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
+def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
                   env: gym.Env, hac_params: HacParams,
-                  level_above_is_testing_subgoal: bool, subgoals_stack: List[np.ndarray],
-                  training: bool, render: bool) -> Tuple[np.ndarray, float, bool, bool, int]:
+                  level_above_is_testing_subgoal: bool, subgoals_stack: List[NumpyArray],
+                  training: bool, render: bool) -> Tuple[NumpyArray, float, bool, bool, int]:
     """ Returns (last state, collected reward, if it failed to reach the goal, done)"""
     num_steps_taken = 0
     num_steps_could_reach_goal = 0
@@ -487,8 +508,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
     # 4) go back to (1), repeating the loop
     finished = False
     while not finished:
-
-        # Step 1: sample a (noisy) action from the policy
+        # Step 1: sample a (possibly noisy) action from the policy
         action, current_level_is_testing_subgoal = pick_action_and_testing(
             current_input, goal, level, level_above_is_testing_subgoal, env, hac_params, training
         )
@@ -496,15 +516,15 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         # Step 2: execute the action, either in the environment (if at the bottom level) or as a subgoal for the
         #         level below (if there's a level below)
         lower_level_failed_to_reach_its_goal = False  # If level > 0, this will be overriden by the real value
-        used_teacher_to_pick_goal = False
+        use_teacher_to_pick_goal = False
         if level > 0:
-            used_teacher_to_pick_goal = training and hac_params.should_use_teacher()  # Don't use teacher in testing
-            if used_teacher_to_pick_goal:
+            use_teacher_to_pick_goal = training and hac_params.should_use_teacher()  # Don't use teacher in testing
+            if use_teacher_to_pick_goal:
                 next_state, action_reward, done, lower_level_steps_taken, low_level_transitions = expert_rollout(env, current_state, hac_params, training)
 
                 # Update variables to pretend we use HAC instead of teacher
-                picked_reward = reduce_reward(action_reward)
-                action = np.hstack([next_state, picked_reward])
+                chosen_desired_reward = reduce_reward(action_reward, percentage=0.5)
+                action = np.hstack([next_state, chosen_desired_reward])
                 total_num_steps += lower_level_steps_taken
 
                 # Add the transition for the lower level
@@ -553,11 +573,12 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
 
         # Transition type (3) Subgoal testing transitions
         if training and current_level_is_testing_subgoal:
-            if level > 0 and lower_level_failed_to_reach_its_goal and not used_teacher_to_pick_goal:
+            if level > 0 and lower_level_failed_to_reach_its_goal and not use_teacher_to_pick_goal:
                 # Step 3a) Create "subgoal testing transition"
                 # We want to penalize the lower level agent if it didn't reach the subgoal set by this agent
                 # "We use a discount rate of 0 in these transitions to avoid non-stationary transition function issues"
                 if hac_params.is_top_level(level):
+                    # TODO(check): I have to check if the subgoal penalties are any good
                     penalty = hac_params.penalty_subgoal_reachability
                 elif not hac_params.is_top_level(level) and hac_params.all_levels_maximize_reward:
                     penalty = hac_params.penalty_subgoal_reachability
@@ -570,6 +591,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         # Create the 'hindsight action' by using the action if it's good, else replace it by the (state, reward)
         # the lower level actually reached
         if level > 0 and lower_level_failed_to_reach_its_goal:
+            # TODO(think): should we use the raw action_reward? or something like reduce_reward(action_reward)?
             hindsight_action = np.hstack([next_state, action_reward])  # Replace original action with action executed in hindsight
         else:
             # There are 2 exception for the action hindsights where we don't replace the subgoal by the next state:
@@ -709,7 +731,7 @@ def render_environment(env, hac_params, subgoals_stack, current_state):
         env.unwrapped.render_goal_2(subgoals_stack[1][:-1], subgoals_stack[0][:-1], env_end_goal)
 
 
-def build_input(state: np.ndarray, total_reward: float, level: int, hac_params: HacParams) -> np.ndarray:
+def build_input(state: NumpyArray, total_reward: float, level: int, hac_params: HacParams) -> NumpyArray:
     if hac_params.reward_present_in_input and not hac_params.is_top_level(level):
         # We don't put the reward into the state for the top level, because the top level doesn't
         # have to reach a certain minimum reward. Therefore, it has less of a need to receive the
@@ -724,7 +746,7 @@ def build_input(state: np.ndarray, total_reward: float, level: int, hac_params: 
         return state
 
 
-def get_state_from_input(input: np.ndarray, level: int, hac_params: HacParams) -> np.ndarray:
+def get_state_from_input(input: NumpyArray, level: int, hac_params: HacParams) -> NumpyArray:
     if hac_params.reward_present_in_input and not hac_params.is_top_level(level):
         return input[:-1]
     else:
@@ -736,13 +758,13 @@ def update_networks(hac_params: HacParams):
         policy.learn(hac_params.num_update_steps_when_training)
 
 
-def run_hac(hac_params: HacParams, start_state: np.ndarray, goal_state: Optional[np.ndarray], env: gym.Env, training: bool, render: bool):
+def run_hac(hac_params: HacParams, start_state: NumpyArray, goal_state: Optional[NumpyArray], env: gym.Env, training: bool, render: bool):
     return run_HAC_level(level=hac_params.num_levels - 1, start_state=start_state, goal=goal_state, env=env,
                          hac_params=hac_params, level_above_is_testing_subgoal=False, subgoals_stack=[],
                          training=training, render=render)
 
 
-def evaluate_hac(hac_params: HacParams, env: gym.Env, render_rounds: int, num_evals: int) -> Tuple[int, float, np.ndarray, np.ndarray]:
+def evaluate_hac(hac_params: HacParams, env: gym.Env, render_rounds: int, num_evals: int) -> Tuple[int, float, NumpyArray, NumpyArray]:
     rewards = []
     num_steps_per_episode = []
     with torch.no_grad():
