@@ -120,6 +120,9 @@ class HacParams:
 
     penalty_subgoal_reachability: float  # The amount of punishment in the subgoal testing transition when failing to reach the goal
 
+    q_bound_low_list: List[float]  # For each level, the lowest possible Q-value
+    q_bound_high_list: List[float]  # For each level, the highest possible Q-value
+
     # (Optional) Teacher that can help the hierarchy learn
     # The teacher is used both to learn goal and low level actions, using rollouts of its actions
     teacher: SacActor = None
@@ -189,6 +192,9 @@ class HacParams:
         assert 0 <= self.probability_to_use_teacher <= 1, "Probability of using teacher must be between 0 and 1"
         assert not (self.teacher is not None and self.num_levels != 2), "Only support teacher for 2 level hierarchy"
 
+        assert len(self.q_bound_low_list) == self.num_levels, "There must be as many Q bounds low as levels"
+        assert len(self.q_bound_high_list) == self.num_levels, "There must be as many Q bounds high as levels"
+
         assert len(self.reward_low) == self.num_levels, \
             f"Reward_low has {len(self.reward_low)} values but there are {self.num_levels} levels"
         assert len(self.reward_high) == self.num_levels, \
@@ -233,7 +239,8 @@ class HacParams:
                     self.subgoal_spaces_low[level], self.subgoal_spaces_high[level]
                 )
 
-            q_bound = None if (self.is_top_level(level) or self.all_levels_maximize_reward) else -self.max_horizons[level]
+            q_bound_low = self.q_bound_low_list[level]  # None if (self.is_top_level(level) or self.all_levels_maximize_reward) else -self.max_horizons[level]
+            q_bound_high = self.q_bound_high_list[level]  # None if (self.is_top_level(level) or self.all_levels_maximize_reward) else -self.max_horizons[level]
             learning_rate = 3e-4 if self.learning_rates is None else self.learning_rates[level]
             if self.use_sac:
                 agent = Sac(
@@ -241,7 +248,8 @@ class HacParams:
                     goal_size=self.subgoal_size if not self.is_top_level(level) else 0,
                     action_low=self.subgoal_spaces_low[level] if level > 0 else self.action_low,
                     action_high=self.subgoal_spaces_high[level] if level > 0 else self.action_high,
-                    q_bound=q_bound,
+                    q_bound_low=q_bound_low,
+                    q_bound_high=q_bound_high,
                     buffer_size=self.replay_buffer_size,
                     batch_size=self.batch_size,
                     writer=self.get_tensorboard_writer() if self.use_tensorboard else None,
@@ -255,7 +263,7 @@ class HacParams:
                     goal_size=self.subgoal_size if level != self.num_levels - 1 else 0,  # No goal for the top level
                     action_range=self.subgoal_ranges[level] if level > 0 else self.action_range,
                     action_center=self.subgoal_centers[level] if level > 0 else self.action_center,
-                    q_bound=q_bound,
+                    q_bound=q_bound_low,
                     buffer_size=self.replay_buffer_size,
                     batch_size=self.batch_size
                 )
@@ -285,13 +293,28 @@ class HacParams:
 def reached_subgoal(state: NumpyArray, cumulated_reward: float, goal: NumpyArray, level: int, hac_params: HacParams) -> bool:
     """ Reached the goal if the state is close enough to the goal, and if the cumulated reward is either
     above or close enough (depending on a flag) to the desired reward """
-    desired_state, desired_reward = goal[:-1], goal[-1]
+    return reached_desired_state(state, goal, level, hac_params) and reached_desired_reward(cumulated_reward, goal, hac_params)
+
+
+def reached_desired_state(state: NumpyArray, goal: NumpyArray, level: int, hac_params: HacParams) -> bool:
+    """ Reached the goal if the state is close enough to the goal  """
+    close_enough_per_dim = is_close_enough_per_dim(state, goal, level, hac_params)
+    return close_enough_per_dim.all()
+
+
+def is_close_enough_per_dim(state: NumpyArray, goal: NumpyArray, level: int, hac_params: HacParams) -> NumpyArray:
+    desired_state = goal[:-1]
     distances = np.abs(state - desired_state)
-    state_close_enough_to_goal = (distances < hac_params.state_distance_thresholds[level]).all()
+    return distances < hac_params.state_distance_thresholds[level]
+
+
+def reached_desired_reward(cumulated_reward: float, goal: NumpyArray, hac_params: HacParams) -> bool:
+    """ Reach the desired reward if the cumulated reward is either above or close enough (depending on a flag) to the desired reward """
+    desired_reward = goal[-1]
     if hac_params.use_reward_close_instead_of_above_minimum:
-        return abs(cumulated_reward - desired_reward) <= hac_params.desired_reward_closeness and state_close_enough_to_goal
+        return abs(cumulated_reward - desired_reward) <= hac_params.desired_reward_closeness
     else:
-        return cumulated_reward >= desired_reward and state_close_enough_to_goal
+        return cumulated_reward >= desired_reward
 
 
 def reached_any_supergoal(current_state: NumpyArray, cumulated_reward: float, subgoals_stack: List[NumpyArray], level: int, hac_params: HacParams):
@@ -493,6 +516,9 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
     num_steps_could_reach_goal = 0
     total_num_steps = 0
     num_times_reached_subgoal = 0
+    num_times_reached_state = 0
+    num_times_reached_reward = 0
+    num_times_reached_state_per_dim = None
     done = False
 
     current_state = start_state
@@ -545,6 +571,16 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
                 num_steps_could_reach_goal += 1
                 if not lower_level_failed_to_reach_its_goal:
                     num_times_reached_subgoal += 1
+                if reached_desired_state(next_state, action, level - 1, hac_params):
+                    num_times_reached_state += 1
+                if reached_desired_reward(action_reward, action, hac_params):
+                    num_times_reached_reward += 1
+                
+                if num_times_reached_state_per_dim is None:
+                    num_times_reached_state_per_dim = is_close_enough_per_dim(next_state, action, level - 1, hac_params).astype(int)
+                else:
+                    num_times_reached_state_per_dim += is_close_enough_per_dim(next_state, action, level - 1, hac_params).astype(int)
+                
         else:
             hac_params.step_number += 1
 
@@ -591,8 +627,8 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
         if level > 0 and lower_level_failed_to_reach_its_goal:
             # TODO(think): can I switch to this without creating problems where the action I train on
             # TODO(think)  is different from the action the agent I actually picked
-            # chosen_reward = reduce_reward(action_reward, percentage=0.5)
-            chosen_reward = action_reward
+            chosen_reward = reduce_reward(action_reward, percentage=0.5)
+            # chosen_reward = action_reward
             hindsight_action = np.hstack([next_state, chosen_reward])  # Replace original action with action executed in hindsight
         else:
             # There are 2 exception for the action hindsights where we don't replace the subgoal by the next state:
@@ -668,8 +704,8 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
     if hac_params.is_top_level(level):
         current_level_failed_to_reach_its_goal = Exception("Top level layer has no goal to be reached!")
     else:
-        current_level_failed_to_reach_its_goal = (num_steps_taken == hac_params.max_horizons[level] and
-                                                  not reached_any_supergoal(current_state, total_reward, subgoals_stack, level, hac_params))
+        current_level_failed_to_reach_its_goal = (done or num_steps_taken == hac_params.max_horizons[level]) and \
+                                                 not reached_any_supergoal(current_state, total_reward, subgoals_stack, level, hac_params)
 
     # Logs rewards, steps per episode, maxed out, done
     if hac_params.use_tensorboard:
@@ -681,7 +717,11 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
         hac_params.writer.add_scalar(f"Level {level}/Done", done, hac_params.step_number)
 
     if hac_params.is_top_level(level):
-        print(f"Subgoal successes: {num_times_reached_subgoal}/{num_steps_could_reach_goal} (expert use: {num_steps_taken - num_steps_could_reach_goal})\t", end='')
+        print(f"Reached subgoals: {num_times_reached_subgoal}/{num_steps_could_reach_goal} ", end='')
+        print(f"(failure state {num_steps_could_reach_goal - num_times_reached_state}/{num_steps_could_reach_goal}", end='')
+        print(f" - {str(num_times_reached_state_per_dim)}/{num_steps_could_reach_goal}", end='')
+        print(f", failure reward {num_steps_could_reach_goal - num_times_reached_reward}/{num_steps_could_reach_goal}", end='')
+        print(f", expert: {num_steps_taken - num_steps_could_reach_goal}/{num_steps_taken})\t", end='')
         if hac_params.use_tensorboard and num_steps_could_reach_goal > 0:
             hac_params.writer.add_scalar(f"Subgoals/Subgoal success", num_times_reached_subgoal / num_steps_could_reach_goal, hac_params.step_number)
 
@@ -795,11 +835,11 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
         )
         running_reward = 0.05 * episode_reward + 0.95 * running_reward
 
-        print(f"Episode {i}/{hac_params.num_training_episodes}\t"
-              f"Avg. reward: {float(episode_reward) / num_episode_steps:.2f}\t"
-              f"Episode reward: {float(episode_reward):.2f}\t"
-              f"Running Reward: {running_reward:.2f}\t"
-              f"# Steps in episode: {num_episode_steps}")
+        print(f"Ep {i}/{hac_params.num_training_episodes}\t"
+              # f"Avg. reward: {float(episode_reward) / num_episode_steps:.2f}\t"
+              f"Ep. reward: {float(episode_reward):.2f}\t"
+              f"R. Reward: {running_reward:.2f}\t"
+              f"Steps: {num_episode_steps}")
 
         update_networks(hac_params)
 
@@ -825,10 +865,14 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
                 hac_params.writer.add_scalar(f"Eval/Mean number of steps", np.mean(steps_per_episode), i)
                 hac_params.writer.add_scalar(f"Eval/Std dev number of steps", np.std(steps_per_episode), i)
 
-            if success_rate == 1.0:
-                print("Perfect success rate. Stopping training and saving model.")
-                save_hac(hac_params, directory)
-                return
+            if np.mean(rewards) > hac_params.env_threshold:
+                # Evaluate over more episodes to be sure it's good enough
+                _, _, many_rewards, _ = evaluate_hac(hac_params, env, render_rounds=0, num_evals=20)
+
+                if np.mean(many_rewards) > hac_params.env_threshold:
+                    print("Perfect success rate. Stopping training and saving model.")
+                    save_hac(hac_params, directory)
+                    return
 
         # Save General-HAC policies and params
         if (i + 1) % hac_params.save_frequency == 0:

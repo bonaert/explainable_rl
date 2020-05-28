@@ -102,14 +102,14 @@ if __name__ == '__main__':
         current_env = gym.make('LunarLanderContinuous-v2')
         current_env = ActionRepeatEnvWrapper(current_env, action_repeat=1, reward_scale=reward_scale)
         num_levels = 2
-        max_horizons = [10]
+        max_horizons = [40]  # TODO(CRUCIAL): having too short horizons is really bad!
 
         current_goal_state = np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0])
 
-        overriden_state_space_low = np.array([-2, -5, -3, -3, -10, -10, 0, 0], dtype=np.float32)
-        overriden_state_space_high = np.array([2,  5,  3,  3,  20,  10, 1, 1], dtype=np.float32)
+        overriden_state_space_low = np.array([-2, -5, -3, -3, -5, -5, 0, 0], dtype=np.float32)
+        overriden_state_space_high = np.array([2,  5,  3,  3,  5,  5, 1, 1], dtype=np.float32)
 
-        state_distance_thresholds = [[0.04, 0.05, 0.5, 0.2, 1.0, 1, 0.5, 0.5]]
+        state_distance_thresholds = [[0.2, 0.1, 0.2, 0.1, 0.3, 0.5, 1.0, 1.0]]
 
         # Not used with SAC
         action_noise_coeffs = np.array([0.5] * 2)
@@ -127,6 +127,10 @@ if __name__ == '__main__':
         # Teacher stuff
         teacher, scaler = get_policy_and_scaler(current_env, has_scaler=True)
         probability_to_use_teacher = 0.5
+
+        # Q bounds
+        q_bound_low_list = [-max_horizons[0], penalty_subgoal_reachability]
+        q_bound_high_list = [0.0, 300.0 * reward_scale]
     else:
         raise Exception("Unsupported environment.")
 
@@ -142,9 +146,11 @@ if __name__ == '__main__':
     # Maybe it picks subgoals that are reachable but bad, and it stays stuck there
     # E.g. it has bad exploration :(
 
+    # TODO(idea): ensure the lower level does at least X steps
+
     use_sac = True
     use_priority_replay = False
-    version = 13
+    version = 18
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
     currently_training = not args.test
@@ -225,7 +231,11 @@ if __name__ == '__main__':
             probability_to_use_teacher=probability_to_use_teacher,
 
             # Logging
-            use_tensorboard=use_tensorboard
+            use_tensorboard=use_tensorboard,
+
+            # Q-bounds
+            q_bound_low_list=q_bound_low_list,
+            q_bound_high_list=q_bound_high_list
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)

@@ -1,5 +1,4 @@
 import copy
-import random
 from typing import List, Union, Tuple, Optional
 
 import numpy as np
@@ -110,12 +109,17 @@ class SacActor(nn.Module):
 
 
 class SacCritic(nn.Module):
-    def __init__(self, state_size: int, goal_size: int, action_size: int, q_bound: Optional[float]):
+    def __init__(self, state_size: int, goal_size: int, action_size: int, q_bound_low: Optional[float], q_bound_high: Optional[float]):
         super().__init__()
         self.layers = make_network([state_size + goal_size + action_size, 256, 256, 1], activation=nn.ReLU)
-        self.q_bound = q_bound
+        self.q_bound_low = q_bound_low
+        self.q_bound_high = q_bound_high
+
         self.has_goal = (goal_size > 0)
-        self.has_q_bound = (q_bound is not None)
+        self.has_q_bound = (q_bound_low is not None) and (q_bound_high is not None)
+        if self.has_q_bound:
+            self.range = (q_bound_high - q_bound_low) / 2
+            self.center = (q_bound_high + q_bound_low) / 2
 
     def forward(self, state: np.ndarray, goal: np.ndarray, action: np.ndarray) -> torch.Tensor:
         """ Returns the actions as a torch Tensor (gradients can be computed)"""
@@ -129,22 +133,23 @@ class SacCritic(nn.Module):
         # Tensor are concatenated over the last dimension (e.g. the values, not the batch rows)
         x = self.layers.forward(total_input)
         if self.has_q_bound:
-            return self.q_bound * torch.sigmoid(x)
+            return self.center + self.range * torch.tanh(x)
         else:
             return x
 
 
 class Sac(nn.Module):
-    def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray, q_bound: float,
+    def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray,
+                 q_bound_low: float, q_bound_high: float,
                  buffer_size: int, batch_size: int, writer, sac_id: Optional[str],
                  use_priority_replay: bool, learning_rate: float):
         super().__init__()
         self.action_size = len(action_low)
         self.use_priority_replay = use_priority_replay
 
-        self.critic1 = SacCritic(state_size, goal_size, self.action_size, q_bound)
+        self.critic1 = SacCritic(state_size, goal_size, self.action_size, q_bound_low, q_bound_high)
         self.critic1_target = copy.deepcopy(self.critic1)
-        self.critic2 = SacCritic(state_size, goal_size, self.action_size, q_bound)
+        self.critic2 = SacCritic(state_size, goal_size, self.action_size, q_bound_low, q_bound_high)
         self.critic2_target = copy.deepcopy(self.critic2)
 
         self.actor = SacActor(state_size, goal_size, self.action_size, action_low=action_low, action_high=action_high)
@@ -172,7 +177,8 @@ class Sac(nn.Module):
             self.buffer = ReplayBuffer(buffer_size, num_transition_dims=8)
 
         self.batch_size = batch_size
-        self.q_bound = q_bound
+        self.q_bound_low = q_bound_low
+        self.q_bound_high = q_bound_high
 
         self.step_number = 0
         self.use_tensorboard = (writer is not None)
@@ -292,7 +298,7 @@ class Sac(nn.Module):
             # that to happen, so we clamp it to the range. This will thus incentivize the critic to predict
             # values in [-H, 0], but since the critic can already only output values in that range, it's perfect.
             # Of course, this is not a coincidence but done by design.
-            if self.q_bound is not None:  # It's None for the top-level, since we don't know in advance the total reward range
-                target_q_values = torch.clamp(target_q_values, min=self.q_bound, max=0.0)
+            if self.q_bound_low is not None:  # It's None for the top-level, since we don't know in advance the total reward range
+                target_q_values = torch.clamp(target_q_values, min=self.q_bound_low, max=self.q_bound_high)
 
             return target_q_values, values1, values2
