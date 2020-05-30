@@ -3,6 +3,7 @@ import numpy as np
 from hac_general import HacParams, evaluate_hac, train, load_hac
 from common import get_args, ActionRepeatEnvWrapper
 from training.sac import get_policy_and_scaler
+from training.ddpg import get_policy_and_scaler as get_policy_and_scaler_dppg
 
 if __name__ == '__main__':
     # noinspection PyUnreachableCode
@@ -13,16 +14,17 @@ if __name__ == '__main__':
     args = get_args()
     if args.env_name == "NotProvided":
         # env_name = "AntMaze"
-        # env_name = "MountainCar"
+        env_name = "MountainCar"
         # env_name = "Pendulum"
         # env_name = "BipedalWalker-v3"
-        env_name = "LunarLanderContinuous-v2"
+        # env_name = "LunarLanderContinuous-v2"
     else:
         env_name = args.env_name
 
     overriden_state_space_low = None
     overriden_state_space_high = None
     teacher = None
+    learn_low_level_transitions_from_teacher = True
 
     if env_name == "AntMaze":
         # state_distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
@@ -34,11 +36,11 @@ if __name__ == '__main__':
         current_env = gym.make("MountainCarContinuous-v0")
 
         # noinspection PyUnreachableCode
-        if False:
+        if True:
             num_levels = 2
             max_horizons = [20]  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
-            state_distance_thresholds = [[0.1, 0.1]]
+            state_distance_thresholds = [[0.05, 0.03]]
         else:
             num_levels = 3
             max_horizons = [20, 15]
@@ -49,9 +51,22 @@ if __name__ == '__main__':
         action_noise_coeffs = np.array([0.1])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L42
         state_noise_coeffs = np.array([0.2, 0.2])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L43
         reward_noise_coeff = 1
-        reward_low = [-100.0] * num_levels  # TODO
-        reward_high = [100.0] * num_levels  # TODO
+
+        reward_low = [None, -10.0]
+        reward_high = [None, 10]
+
         current_env_threshold = current_env.spec.reward_threshold
+        penalty_subgoal_reachability = -200
+
+        # Teacher stuff
+        teacher, scaler = get_policy_and_scaler_dppg(current_env, has_scaler=True)
+        probability_to_use_teacher = 0.1
+        learn_low_level_transitions_from_teacher = True
+
+        # Q bounds
+        q_bound_low_list = [-max_horizons[0], penalty_subgoal_reachability]
+        q_bound_high_list = [0.0, 100]
+
     elif env_name == "Pendulum":
         current_env = gym.make("Pendulum-v0")
 
@@ -71,29 +86,56 @@ if __name__ == '__main__':
         # Action space: Low [-1. -1. -1. -1.]	High [1. 1. 1. 1.]
         # State space:  Low [-inf] x 24         High [inf] x 24
         #               14 values (speed, angle joints) + 10 lidar values
+        # State:
+        # - hull angle [-4, 3]
+        # - hull angular velocity [-0.25, 0.25]
+        # - horizontal speed [-0.4, 0.8]
+        # - vertical speed   [-0.5, 0.3]
+        # - joint 0 angle    [-1, 1.2]
+        # - joint 0 speed    [-1.5, 1.5]
+        # - joint 1 angle    [-1, 1.5]
+        # - joint 1 speed    [-1, 2]
+        # - leg 1 contact    {0, 1}
+        # - joint 2 angle    [-1, 1.2]
+        # - joint 2 speed    [-1.5, 1.5]
+        # - joint 3 angle    [-1, 1.5]
+        # - joint 3 speed    [-1.5, 1]
+        # - leg 2 contact    {0, 1}
+        # - 10 lidar rangefinder measurements to help to deal with the hardcore version.
+        # There's no coordinates in the state vector. Lidar is less useful in normal version, but it works.
         reward_scale = 1.0
         current_env = gym.make('BipedalWalker-v3')
         # current_env = ActionRepeatEnvWrapper(current_env, action_repeat=3, reward_scale=reward_scale)
         num_levels = 2
-        max_horizons = [10]
+        max_horizons = [20]
 
-        # State spaces we can pick goals from: [-10, 10] for values and [-100, 100] for lidar values
-        overriden_state_space_low = np.array([-5] + [-2] * 13 + [-2] * 10, dtype=np.float32)
-        overriden_state_space_high = np.array([5] + [2] * 13 + [2] * 10, dtype=np.float32)
+        overriden_state_space_low = np.array([-1., -0.25, -0.4, -0.5, -1, -1.5, -1, -1, 0, -1, -1.5, -1, -1.5, 0] + [-2] * 10, dtype=np.float32)
+        overriden_state_space_high = np.array([1,  0.25,   0.8,  0.3, 1.2, 1.5, 1.5, 2, 1, 1.2, 1.5, 1.5, 1,   1] + [2] * 10, dtype=np.float32)
+
         # Very small distance threshold for values; don't try to predict lidar values (probably impossible)
-        state_distance_thresholds = [[0.5] * 14 + [np.inf] * 10]
+        state_distance_thresholds = [[0.4, np.inf, np.inf, np.inf]
+                                     + [0.7, np.inf, 0.5, np.inf, np.inf]
+                                     + [0.7, np.inf, 0.5, np.inf, np.inf]
+                                     + [np.inf] * 10]
 
         # Not used with SAC
         action_noise_coeffs = np.array([0.5] * 4)
         state_noise_coeffs = np.array([0.05] * 24)
         reward_noise_coeff = 0.3
 
-        # reward_low = [-200, -200]
-        # reward_high = [350, 350]
-        reward_low = [None, -5 * max_horizons[0]]
-        reward_high = [None, 5 * max_horizons[0]]
+        reward_low = [None, -200 * reward_scale]
+        reward_high = [None, 350 * reward_scale]
 
         current_env_threshold = 300.0 * reward_scale
+        penalty_subgoal_reachability = -1000.0 * reward_scale
+
+        # Teacher stuff
+        teacher, scaler = get_policy_and_scaler(current_env, has_scaler=True)
+        probability_to_use_teacher = 0.5
+
+        # Q bounds
+        q_bound_low_list = [-max_horizons[0], penalty_subgoal_reachability]
+        q_bound_high_list = [0.0, 350.0 * reward_scale]
     elif env_name == "LunarLanderContinuous-v2":
         # Action space: Low [-1. -1.]	High [1. 1.]
         # State space:  Low [-inf] x 8         High [inf] x 8
@@ -103,8 +145,6 @@ if __name__ == '__main__':
         current_env = ActionRepeatEnvWrapper(current_env, action_repeat=1, reward_scale=reward_scale)
         num_levels = 2
         max_horizons = [40]  # TODO(CRUCIAL): having too short horizons is really bad!
-
-        current_goal_state = np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0])
 
         overriden_state_space_low = np.array([-2, -5, -3, -3, -5, -5, 0, 0], dtype=np.float32)
         overriden_state_space_high = np.array([2,  5,  3,  3,  5,  5, 1, 1], dtype=np.float32)
@@ -116,8 +156,6 @@ if __name__ == '__main__':
         state_noise_coeffs = np.array([0.05] * 8)
         reward_noise_coeff = 0.3
 
-        # reward_low = [-200, -200]
-        # reward_high = [350, 350]
         reward_low = [None, -1000 * reward_scale]
         reward_high = [None, 200 * reward_scale]
 
@@ -150,10 +188,10 @@ if __name__ == '__main__':
 
     use_sac = True
     use_priority_replay = False
-    version = 18
+    version = 20
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
-    currently_training = not args.test
+    currently_training = False  # not args.test
     num_training_episodes = args.num_training_episodes
     evaluation_frequency = args.eval_frequency
     my_render_rounds = args.render_rounds
@@ -164,7 +202,7 @@ if __name__ == '__main__':
     current_batch_size = args.batch_size
     current_discount = args.discount
     replay_buffer_size = args.replay_buffer_size
-    subgoal_testing_frequency = args.subgoal_testing_frequency
+    subgoal_testing_frequency = 0.1  # args.subgoal_testing_frequency
     num_update_steps_when_training = args.num_update_steps_when_training
     learning_rates = [3e-4, 3e-4]
 
@@ -229,6 +267,7 @@ if __name__ == '__main__':
             teacher=teacher,
             state_scaler=scaler,
             probability_to_use_teacher=probability_to_use_teacher,
+            learn_low_level_transitions_from_teacher=learn_low_level_transitions_from_teacher,
 
             # Logging
             use_tensorboard=use_tensorboard,

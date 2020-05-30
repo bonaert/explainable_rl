@@ -128,6 +128,7 @@ class HacParams:
     teacher: SacActor = None
     state_scaler: sklearn.preprocessing.StandardScaler = None
     probability_to_use_teacher: float = 0.5
+    learn_low_level_transitions_from_teacher: bool = True
 
     # These fields have a default value but the user should be able
     # to override them.
@@ -510,7 +511,7 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
 def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
                   env: gym.Env, hac_params: HacParams,
                   level_above_is_testing_subgoal: bool, subgoals_stack: List[NumpyArray],
-                  training: bool, render: bool) -> Tuple[NumpyArray, float, bool, bool, int]:
+                  training: bool, render: bool) -> Tuple[NumpyArray, float, bool, bool, int, float]:
     """ Returns (last state, collected reward, if it failed to reach the goal, done)"""
     num_steps_taken = 0
     num_steps_could_reach_goal = 0
@@ -552,11 +553,12 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
                 total_num_steps += lower_level_steps_taken
 
                 # Add the transition for the lower level
-                hac_params.policies[0].add_many_to_buffer(low_level_transitions)
+                if hac_params.learn_low_level_transitions_from_teacher:
+                    hac_params.policies[0].add_many_to_buffer(low_level_transitions)
             else:
                 # Train level i − 1 using subgoal = "action we picked"
                 subgoals_stack.append(action)
-                next_state, action_reward, lower_level_failed_to_reach_its_goal, done, lower_level_steps_taken = run_HAC_level(
+                next_state, action_reward, lower_level_failed_to_reach_its_goal, done, lower_level_steps_taken, _ = run_HAC_level(
                     level=level - 1,
                     start_state=current_state,
                     goal=action,
@@ -669,7 +671,7 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
             finished = done
         else:
             finished = done or num_steps_taken >= hac_params.max_horizons[level] or \
-                       reached_any_supergoal(current_state, total_reward, subgoals_stack, level, hac_params)
+                       (reached_any_supergoal(current_state, total_reward, subgoals_stack, level, hac_params))
 
     # Transition type (2) Hindsight goal transitions (part 2/2: completion and addition to the replay buffer)
     # This must be done when the action loop is completed, since it requires having all transitions
@@ -721,11 +723,15 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
         print(f"(failure state {num_steps_could_reach_goal - num_times_reached_state}/{num_steps_could_reach_goal}", end='')
         print(f" - {str(num_times_reached_state_per_dim)}/{num_steps_could_reach_goal}", end='')
         print(f", failure reward {num_steps_could_reach_goal - num_times_reached_reward}/{num_steps_could_reach_goal}", end='')
-        print(f", expert: {num_steps_taken - num_steps_could_reach_goal}/{num_steps_taken})\t", end='')
+        print(f", expert: {num_steps_taken - num_steps_could_reach_goal}/{num_steps_taken})")
         if hac_params.use_tensorboard and num_steps_could_reach_goal > 0:
             hac_params.writer.add_scalar(f"Subgoals/Subgoal success", num_times_reached_subgoal / num_steps_could_reach_goal, hac_params.step_number)
 
-    return current_state, total_reward, current_level_failed_to_reach_its_goal, done, total_num_steps
+        percentage_reached_subgoal = num_times_reached_subgoal / num_steps_could_reach_goal
+    else:
+        percentage_reached_subgoal = -1.0
+
+    return current_state, total_reward, current_level_failed_to_reach_its_goal, done, total_num_steps, percentage_reached_subgoal
 
 
 def log_to_tensorboard(action, action_reward, current_input, goal, hac_params, level, next_state, total_reward):
@@ -805,32 +811,37 @@ def run_hac(hac_params: HacParams, start_state: NumpyArray, goal_state: Optional
                          training=training, render=render)
 
 
-def evaluate_hac(hac_params: HacParams, env: gym.Env, render_rounds: int, num_evals: int) -> Tuple[int, float, NumpyArray, NumpyArray]:
+def evaluate_hac(hac_params: HacParams, env: gym.Env, render_rounds: int, num_evals: int) -> Tuple[int, float, float, NumpyArray, NumpyArray]:
     rewards = []
     num_steps_per_episode = []
+    num_times_mostly_reached_subgoal = 0
     with torch.no_grad():
         num_successes = 0
         for i in range(num_evals):
             state = env.reset()
             render_now = (i < render_rounds)
-            _, reward, maxed_out, done, total_num_steps = run_hac(hac_params, state, goal_state=None, env=env, training=False, render=render_now)
+            _, reward, maxed_out, done, total_num_steps, percentage_reached_subgoal = run_hac(hac_params, state, goal_state=None, env=env, training=False, render=render_now)
 
             if reward >= hac_params.env_threshold:
                 num_successes += 1
+            if percentage_reached_subgoal >= 0.8:
+                num_times_mostly_reached_subgoal += 1
+
             rewards.append(reward)
             num_steps_per_episode.append(total_num_steps)
 
             print(f"Total reward: {reward}")
 
     success_rate = num_successes / float(num_evals)
-    return num_successes, success_rate, np.array(rewards), np.array(num_steps_per_episode)
+    reached_subgoal_rate = num_times_mostly_reached_subgoal / float(num_evals)
+    return num_successes, success_rate, reached_subgoal_rate, np.array(rewards), np.array(num_steps_per_episode),
 
 
 def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: str):
     running_reward = 0.0
     for i in range(hac_params.num_training_episodes):
         state = env.reset()
-        _, episode_reward, _, done, num_episode_steps = run_hac(
+        _, episode_reward, _, done, num_episode_steps, _ = run_hac(
             hac_params, state, goal_state=None, env=env, training=True, render=False
         )
         running_reward = 0.05 * episode_reward + 0.95 * running_reward
@@ -850,10 +861,11 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
 
         # Evaluate General-HAC
         if i == 0 or (i + 1) % hac_params.evaluation_frequency == 0:
-            num_successes, success_rate, rewards, steps_per_episode = evaluate_hac(
+            num_successes, success_rate, reached_subgoal_rate, rewards, steps_per_episode = evaluate_hac(
                 hac_params, env, render_rounds=render_rounds, num_evals=hac_params.num_test_episodes
             )
             print("\nStep %d: Success rate (%d/%d): %.3f" % (i + 1, num_successes, hac_params.num_test_episodes, success_rate))
+            print("Reached subgoal rate: %.3f" % reached_subgoal_rate)
             # noinspection PyStringFormat
             print("Reward: %.3f +- %.3f" % (np.mean(rewards), np.std(rewards)))
             # noinspection PyStringFormat
@@ -865,11 +877,11 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
                 hac_params.writer.add_scalar(f"Eval/Mean number of steps", np.mean(steps_per_episode), i)
                 hac_params.writer.add_scalar(f"Eval/Std dev number of steps", np.std(steps_per_episode), i)
 
-            if np.mean(rewards) > hac_params.env_threshold:
+            if np.mean(rewards) > hac_params.env_threshold and reached_subgoal_rate > 0.8:
                 # Evaluate over more episodes to be sure it's good enough
-                _, _, many_rewards, _ = evaluate_hac(hac_params, env, render_rounds=0, num_evals=20)
+                _, _, reached_subgoal_rate, many_rewards, _ = evaluate_hac(hac_params, env, render_rounds=0, num_evals=20)
 
-                if np.mean(many_rewards) > hac_params.env_threshold:
+                if np.mean(many_rewards) > hac_params.env_threshold and reached_subgoal_rate > 0.8:
                     print("Perfect success rate. Stopping training and saving model.")
                     save_hac(hac_params, directory)
                     return
