@@ -219,22 +219,22 @@ def get_path(env: gym.Env, filename: str, scripts_dir_path: Path):
 
 def save_numpy(values: torch.Tensor, env: gym.Env, filename: str):
     """ Saves a Numpy array at the path 'data/{environment name}/{filename}' """
-    np.save(get_path(env, filename, Path(__file__)), values)
+    np.save(get_path(env, filename, Path(__file__).parent), values)
 
 
 def save_tensor(values: torch.Tensor, env: gym.Env, filename: str):
     """ Saves a Pytorch Tensor at the path 'data/{environment name}/{filename}' """
-    torch.save(values, get_path(env, filename, Path(__file__)))
+    torch.save(values, get_path(env, filename, Path(__file__).parent))
 
 
 def save_model(model: torch.nn.Module, env: gym.Env, filename: str):
     """ Saves the Pytorch model at the path 'data/{environment name}/{filename}' """
-    torch.save(model.state_dict(), get_path(env, filename, Path(__file__)))
+    torch.save(model.state_dict(), get_path(env, filename, Path(__file__).parent))
 
 
 def save_scaler(scaler, env: gym.Env, filename: str):
     """ Saves the Scikit-learn scaler at the path 'data/{environment name}/{filename}' """
-    joblib.dump(scaler, get_path(env, filename, scripts_dir_path=Path(__file__)))
+    joblib.dump(scaler, get_path(env, filename, scripts_dir_path=Path(__file__).parent))
 
 
 def load_numpy(env: gym.Env, filename: str):

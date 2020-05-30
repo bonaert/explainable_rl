@@ -267,10 +267,8 @@ def ddpg_run(env, policy, scaler=None, render=True, run_once=False):
     return policy_run(env, policy, scaler, render, run_once)
 
 
-def ddpg_run_from_disk(env, has_scaler=True, render=True):
-    """ Loads a DDPG-trained policy (and optionally a observation / state scaler) and then runs them
-    on the environment indefinitely (by default) or over a single episode (if desired).
-    By default the environment is rendered, but this can be disabled. """
+def get_policy_and_scaler(env, has_scaler):
+    """ Loads a SAC-trained policy (and optionally a observation / state scaler)"""
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     ddpg_policy = load_model(
@@ -278,4 +276,12 @@ def ddpg_run_from_disk(env, has_scaler=True, render=True):
         env, "policy_target.data"
     )
     scaler = load_scaler(env, "scaler.data") if has_scaler else None
+    return ddpg_policy, scaler
+
+
+def ddpg_run_from_disk(env, has_scaler=True, render=True):
+    """ Loads a DDPG-trained policy (and optionally a observation / state scaler) and then runs them
+    on the environment indefinitely (by default) or over a single episode (if desired).
+    By default the environment is rendered, but this can be disabled. """
+    ddpg_policy, scaler = get_policy_and_scaler(env, has_scaler)
     ddpg_run(env, ddpg_policy, scaler=scaler, render=render)
