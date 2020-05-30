@@ -30,7 +30,7 @@ if __name__ == "__main__":
                            gamma=0.99,
                            use_tensorboard=True,
                            env_can_be_solved=True,
-                           save_model_frequency=10,
+                           save_model_frequency=50,
                            stop_at_threshold=False,
                            maximum_episodes=2000)
 
@@ -77,7 +77,7 @@ if __name__ == "__main__":
             value_optimizer=Adam(ddpg_value_estimator.parameters(), lr=1e-3),
             replay_buffer_size=1000000,
             update_frequency=50,
-            update_start=1000,
+            update_start=100,
             batch_size=128,
             polyak=0.9,
             noise_coeff=1,
@@ -105,8 +105,6 @@ if __name__ == "__main__":
             policy_optimizer=Adam(sac_policy.parameters(), lr=1e-3),  # Same LR for both policy and value
             value_optimizer=Adam(value_parameters, lr=1e-3),
             replay_buffer_size=1000000,
-            update_frequency=50,
-            update_start=5000,
             batch_size=100,
             polyak=0.995,
             num_random_action_steps=5000,
