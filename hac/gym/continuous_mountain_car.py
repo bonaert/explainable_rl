@@ -205,7 +205,7 @@ class Continuous_MountainCarEnv(gym.Env):
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
-    def render_goal(self, goal, end_goal, mode='human'):
+    def render_goal(self, goal, end_goal, mode='human', plan_subgoals=None):
         screen_width = 600
         screen_height = 400
 
@@ -214,8 +214,8 @@ class Continuous_MountainCarEnv(gym.Env):
         carwidth = 40
         carheight = 20
 
+        from gym.envs.classic_control import rendering
         if self.viewer is None:
-            from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(screen_width, screen_height)
             xs = np.linspace(self.min_position, self.max_position, 100)
             ys = self._height(xs)
@@ -274,6 +274,16 @@ class Continuous_MountainCarEnv(gym.Env):
         self.update_goal(self.state, self.cartrans0, self.speed_car, self.speed_car_arrow)
         self.update_goal(goal, self.cartrans1, self.speed_goal1, self.speed_goal1_arrow)
         self.update_goal(end_goal, self.cartrans2, self.speed_goal2, self.speed_goal2_arrow)
+
+        if plan_subgoals is not None:
+            for i, subgoal in enumerate(plan_subgoals):
+                color = 1 - i / len(plan_subgoals)
+                car_subgoal, cartrans_subgoal = self.create_trans_and_add_car(rendering, 0, color, 0)
+                speed_subgoal, speed_subgoal_arrow = self.create_arrow(rendering, cartrans_subgoal, subgoal[1])
+                self.update_goal(subgoal, cartrans_subgoal, speed_subgoal, speed_subgoal_arrow)
+                self.viewer.add_onetime(car_subgoal)
+                self.viewer.add_onetime(speed_subgoal)
+                self.viewer.add_onetime(speed_subgoal_arrow)
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
