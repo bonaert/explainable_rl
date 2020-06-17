@@ -14,6 +14,8 @@ from nicetypes import NumpyArray, Level1Transition
 from sac import SacActor
 from networks.simple import SacPolicy
 from training.sac import get_policy_and_scaler
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
 
 
 class Dagger:
@@ -30,6 +32,13 @@ class Dagger:
         self.num_agents_taught = 20
         self.num_trajectories = 20
         self.env = env
+        self.env_name = env.spec.id
+
+        current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+        self.writer = SummaryWriter(f"logsDagger/{self.env_name}/{current_time}")
+
+        self.train_step_number = 0
+        self.eval_step_number = 0
 
     def teach_hrl_agent(self) -> Tuple[SacActor, SacActor]:
         current_agent_1 = self.level_1_policy
@@ -37,6 +46,7 @@ class Dagger:
         replay_buffer_1 = ReplayBuffer(max_size=2_000_000, num_transition_dims=3)
         replay_buffer_2 = ReplayBuffer(max_size=2_000_000, num_transition_dims=2)
         for i in range(self.num_agents_taught):
+            print(f"DAgger-Hierarchical: training step {i}")
             with torch.no_grad():
                 new_experiences = []
                 for _ in tqdm(range(self.num_trajectories)):
@@ -121,8 +131,11 @@ class Dagger:
 
         return full_transitions, state, done
 
-    def evaluate_agent(self, current_agent_1: SacActor, current_agent_2: SacActor, num_episodes_to_render=0, num_episodes=10):
-        rewards, duration, logprobs1, logprobs2 = [], [], [], []
+    def evaluate_agent(self, current_agent_1: SacActor, current_agent_2: SacActor, num_episodes_to_render=0, num_episodes=10, finished_training=False):
+        log_group = "TestingPhase" if finished_training else "TrainingPhase"
+        writer = self.writer
+
+        rewards, duration, logprobs1, logprobs2, success_rates_subgoals = [], [], [], [], []
         for i in range(num_episodes):
             state = self.env.reset()
             done = False
@@ -131,12 +144,15 @@ class Dagger:
             total_reward = 0.0
             num_steps_with_current_goal = 0
             num_steps_in_episode = 0
+            num_times_goal_reached = 0
+            num_times_goal_created = 0
 
             while not done:
                 if should_pick_new_goal:
                     goal, logprob2 = current_agent_2.sample_actions(state, goal=None, deterministic=True, compute_log_prob=True)
                     num_steps_with_current_goal = 0
                     logprobs2.append(logprob2)
+                    num_times_goal_created += 1
 
                 action, logprob1 = current_agent_1.sample_actions(state, goal, deterministic=True, compute_log_prob=True)
 
@@ -154,13 +170,38 @@ class Dagger:
 
                 should_pick_new_goal = self.reached_goal_fn(state, goal) or num_steps_with_current_goal >= self.horizon_length
 
+                if self.reached_goal_fn(state, goal):
+                    num_times_goal_reached += 1
+
+            success_rate_subgoal = num_times_goal_reached / num_times_goal_created
+
             rewards.append(total_reward)
             duration.append(num_steps_in_episode)
+            success_rates_subgoals.append(success_rate_subgoal)
 
-            print(f"Episode {i} - did {num_steps_in_episode} steps and collected reward {total_reward:.3f} ")
+            step_number = self.eval_step_number if finished_training else self.train_step_number
 
+            writer.add_scalar(f"{log_group}/Episode reward", total_reward, step_number)
+            writer.add_scalar(f"{log_group}/Steps in episode", num_steps_in_episode, step_number)
+            writer.add_scalar(f"{log_group}/Percent goals reached", success_rate_subgoal, step_number)
+
+            if finished_training:
+                self.eval_step_number += 1
+            else:
+                self.train_step_number += 1
+
+            print(f"Episode {i} - did {num_steps_in_episode} steps and collected reward {total_reward:.3f} Subgoal success rate: {success_rate_subgoal:.3f}")
+
+        writer.add_scalar(f"{log_group}/Eval Mean Reward", np.mean(rewards), step_number)
+        writer.add_scalar(f"{log_group}/Eval Std Dev Reward", np.std(rewards), step_number)
+        writer.add_scalar(f"{log_group}/Eval Mean Num Steps", np.mean(duration), step_number)
+        writer.add_scalar(f"{log_group}/Eval Std Dev Num Steps", np.std(duration), step_number)
+        writer.add_scalar(f"{log_group}/Eval Mean Percent goals reached", np.mean(success_rates_subgoals), step_number)
+        writer.add_scalar(f"{log_group}/Eval Std Percent goals reached", np.std(success_rates_subgoals), step_number)
+        writer.flush()
         print(f"Total rewards: {np.mean(rewards):.3f} +- {np.std(rewards):.3f}")
         print(f"Num steps: {np.mean(duration):.3f} +- {np.std(duration):.3f}")
+        print(f"Success rate subgoals: {np.mean(success_rates_subgoals):.3f} +- {np.std(success_rates_subgoals):.3f}")
         print(f"Log prob level 1: {np.mean(logprobs1):.3f} +- {np.std(logprobs1):.3f}")
         print(f"Log prob level 2: {np.mean(logprobs2):.3f} +- {np.std(logprobs2):.3f}")
 
@@ -208,7 +249,7 @@ if __name__ == '__main__':
                     (abs(state - goal) < state_distance_thresholds).all())
     new_level_1_policy, new_level_2_policy = dagger.teach_hrl_agent()
 
-    dagger.evaluate_agent(new_level_1_policy, new_level_2_policy, num_episodes_to_render=100, num_episodes=100)
+    dagger.evaluate_agent(new_level_1_policy, new_level_2_policy, num_episodes_to_render=100, num_episodes=100, finished_training=True)
 
     # Saving the teached student model
     # save_hac(hac_params, directory="./dagger-taught/")
