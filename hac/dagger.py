@@ -219,7 +219,7 @@ if __name__ == '__main__':
     env_name = "LunarLanderContinuous-v2"
     use_sac = True
     num_levels = 2
-    max_horizons = [10]  # This should stay at 20!
+    # max_horizons = [10]  # This should stay at 20!
     # version = 9
     # current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     # current_directory = "runs/LunarLanderContinuous-v2_2_levels_h_10_40_v2"

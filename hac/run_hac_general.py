@@ -59,9 +59,10 @@ if __name__ == '__main__':
         penalty_subgoal_reachability = -200
 
         # Teacher stuff
-        teacher, scaler = get_policy_and_scaler_dppg(current_env, has_scaler=True)
-        probability_to_use_teacher = 0.1
-        learn_low_level_transitions_from_teacher = True
+        # teacher, scaler = get_policy_and_scaler_dppg(current_env, has_scaler=True)
+        # probability_to_use_teacher = 0.1
+        teacher, scaler = None, None
+        probability_to_use_teacher = 0
 
         # Q bounds
         q_bound_low_list = [-max_horizons[0], penalty_subgoal_reachability]
@@ -162,9 +163,11 @@ if __name__ == '__main__':
         current_env_threshold = 200.0 * reward_scale
         penalty_subgoal_reachability = -1000.0 * reward_scale
 
-        # Teacher stuff
-        teacher, scaler = get_policy_and_scaler(current_env, has_scaler=True)
-        probability_to_use_teacher = 0.5
+        # Teacher stuffLearning rate
+        # teacher, scaler = get_policy_and_scaler(current_env, has_scaler=True)
+        # probability_to_use_teacher = 0.5
+        teacher, scaler = None, None
+        probability_to_use_teacher = 0
 
         # Q bounds
         q_bound_low_list = [-max_horizons[0], penalty_subgoal_reachability]
@@ -188,11 +191,11 @@ if __name__ == '__main__':
 
     use_sac = True
     use_priority_replay = False
-    version = 20
-    current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    version = 27
+    current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_basic_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
-    currently_training = False  # not args.test
-    num_training_episodes = args.num_training_episodes
+    currently_training = not args.test
+    num_training_episodes = 2000  # args.num_training_episodes
     evaluation_frequency = args.eval_frequency
     my_render_rounds = args.render_rounds
     current_num_test_episodes = args.num_test_episodes
