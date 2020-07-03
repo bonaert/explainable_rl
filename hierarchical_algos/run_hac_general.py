@@ -14,10 +14,10 @@ if __name__ == '__main__':
     args = get_args()
     if args.env_name == "NotProvided":
         # env_name = "AntMaze"
-        env_name = "MountainCar"
+        # env_name = "MountainCar"
         # env_name = "Pendulum"
         # env_name = "BipedalWalker-v3"
-        # env_name = "LunarLanderContinuous-v2"
+        env_name = "LunarLanderContinuous-v2"
     else:
         env_name = args.env_name
 
@@ -181,20 +181,15 @@ if __name__ == '__main__':
     ########################################
     #     Regularly changed parameters     #
     ########################################
-
-    # It learns to pick reachable subgoals
-    # But it doesn't pick subgoals that maximize the reward well
-    # Maybe it picks subgoals that are reachable but bad, and it stays stuck there
-    # E.g. it has bad exploration :(
-
     # TODO(idea): ensure the lower level does at least X steps
 
     use_sac = True
     use_priority_replay = False
-    version = 27
-    current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_basic_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    version = 18
+    # current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_basic_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
-    currently_training = not args.test
+
     num_training_episodes = 2000  # args.num_training_episodes
     evaluation_frequency = args.eval_frequency
     my_render_rounds = args.render_rounds
@@ -214,7 +209,9 @@ if __name__ == '__main__':
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
 
+    currently_training = False  # not args.test
     if currently_training:
+        exit(0)
         #############################
         #     Shared parameters     #
         #############################

@@ -15,9 +15,7 @@ parts
 lib
 lib64
 
-data/*.data
 /src/scripts/runs/
-/data/*/*.data
 /videos/*.mp4
 
 docs/

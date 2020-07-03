@@ -1,0 +1,183 @@
+{
+    "action_center": [
+        0.0,
+        0.0
+    ],
+    "action_high": [
+        1.0,
+        1.0
+    ],
+    "action_low": [
+        -1.0,
+        -1.0
+    ],
+    "action_noise_coeffs": [
+        0.5,
+        0.5
+    ],
+    "action_range": [
+        1.0,
+        1.0
+    ],
+    "action_size": 2,
+    "all_levels_maximize_reward": false,
+    "batch_size": 128,
+    "desired_reward_closeness": 0.5,
+    "discount": 0.98,
+    "env_name": "LunarLanderContinuous-v2",
+    "env_threshold": 2.0,
+    "evaluation_frequency": 20,
+    "her_storage": [
+        [],
+        []
+    ],
+    "learning_rates": [
+        0.0003,
+        0.0003
+    ],
+    "max_horizons": [
+        40
+    ],
+    "num_levels": 2,
+    "num_test_episodes": 5,
+    "num_training_episodes": 50000,
+    "num_update_steps_when_training": 40,
+    "penalty_failure_reach_goal": [
+        -10.0
+    ],
+    "penalty_subgoal_reachability": -10.0,
+    "policies": [
+        "The models are stored in the 'policies.ckpt' file because otherwise this JSON file would be huge and unreadable.\n The load_hac() will deserialize both this JSON file and the policies, and then merge the results."
+    ],
+    "probability_to_use_teacher": 0.5,
+    "q_bound_high_list": [
+        0.0,
+        3.0
+    ],
+    "q_bound_low_list": [
+        -40,
+        -10.0
+    ],
+    "replay_buffer_size": 2000000,
+    "reward_high": [
+        null,
+        2.0
+    ],
+    "reward_low": [
+        null,
+        -10.0
+    ],
+    "reward_noise_coeff": 0.3,
+    "reward_present_in_input": false,
+    "save_frequency": 20,
+    "state_distance_thresholds": [
+        [
+            0.2,
+            0.1,
+            0.2,
+            0.1,
+            0.3,
+            0.5,
+            1.0,
+            1.0
+        ]
+    ],
+    "state_high": [
+        2.0,
+        5.0,
+        3.0,
+        3.0,
+        5.0,
+        5.0,
+        1.0,
+        1.0
+    ],
+    "state_low": [
+        -2.0,
+        -5.0,
+        -3.0,
+        -3.0,
+        -5.0,
+        -5.0,
+        0.0,
+        0.0
+    ],
+    "state_noise_coeffs": [
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05,
+        0.05
+    ],
+    "state_scaler": null,
+    "state_size": 8,
+    "step_number": 843914,
+    "stop_episode_on_subgoal_failure": false,
+    "subgoal_centers": [
+        null,
+        [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.5,
+            0.5,
+            -4.0
+        ]
+    ],
+    "subgoal_noises_coeffs": [],
+    "subgoal_ranges": [
+        null,
+        [
+            2.0,
+            5.0,
+            3.0,
+            3.0,
+            5.0,
+            5.0,
+            0.5,
+            0.5,
+            6.0
+        ]
+    ],
+    "subgoal_spaces_high": [
+        null,
+        [
+            2.0,
+            5.0,
+            3.0,
+            3.0,
+            5.0,
+            5.0,
+            1.0,
+            1.0,
+            2.0
+        ]
+    ],
+    "subgoal_spaces_low": [
+        null,
+        [
+            -2.0,
+            -5.0,
+            -3.0,
+            -3.0,
+            -5.0,
+            -5.0,
+            0.0,
+            0.0,
+            -10.0
+        ]
+    ],
+    "subgoal_testing_frequency": 0.2,
+    "teacher": null,
+    "use_priority_replay": false,
+    "use_reward_close_instead_of_above_minimum": false,
+    "use_sac": true,
+    "use_tensorboard": true,
+    "writer": null
+}

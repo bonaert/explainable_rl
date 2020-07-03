@@ -1,0 +1,131 @@
+{
+    "action_center": [
+        0.0
+    ],
+    "action_high": [
+        1.0
+    ],
+    "action_low": [
+        -1.0
+    ],
+    "action_noise_coeffs": [
+        0.1
+    ],
+    "action_range": [
+        1.0
+    ],
+    "action_size": 1,
+    "all_levels_maximize_reward": false,
+    "batch_size": 128,
+    "desired_reward_closeness": 0.5,
+    "discount": 0.98,
+    "env_name": "MountainCarContinuous-v0",
+    "env_threshold": 90.0,
+    "evaluation_frequency": 30,
+    "her_storage": [
+        [],
+        []
+    ],
+    "learn_low_level_transitions_from_teacher": true,
+    "learning_rates": [
+        0.0003,
+        0.0003
+    ],
+    "max_horizons": [
+        20
+    ],
+    "num_levels": 2,
+    "num_test_episodes": 5,
+    "num_training_episodes": 50000,
+    "num_update_steps_when_training": 40,
+    "penalty_failure_reach_goal": [
+        -10.0
+    ],
+    "penalty_subgoal_reachability": -200,
+    "policies": [
+        "The models are stored in the 'policies.ckpt' file because otherwise this JSON file would be huge and unreadable.\n The load_hac() will deserialize both this JSON file and the policies, and then merge the results."
+    ],
+    "probability_to_use_teacher": 0.1,
+    "q_bound_high_list": [
+        0.0,
+        100
+    ],
+    "q_bound_low_list": [
+        -20,
+        -200
+    ],
+    "replay_buffer_size": 2000000,
+    "reward_high": [
+        null,
+        10
+    ],
+    "reward_low": [
+        null,
+        -10.0
+    ],
+    "reward_noise_coeff": 1,
+    "reward_present_in_input": false,
+    "save_frequency": 30,
+    "state_distance_thresholds": [
+        [
+            0.05,
+            0.03
+        ]
+    ],
+    "state_high": [
+        0.6000000238418579,
+        0.07000000029802322
+    ],
+    "state_low": [
+        -1.2000000476837158,
+        -0.07000000029802322
+    ],
+    "state_noise_coeffs": [
+        0.2,
+        0.2
+    ],
+    "state_scaler": null,
+    "state_size": 2,
+    "step_number": 609784,
+    "stop_episode_on_subgoal_failure": false,
+    "subgoal_centers": [
+        null,
+        [
+            -0.30000001192092896,
+            0.0,
+            0.0
+        ]
+    ],
+    "subgoal_noises_coeffs": [],
+    "subgoal_ranges": [
+        null,
+        [
+            0.9000000357627869,
+            0.07000000029802322,
+            10.0
+        ]
+    ],
+    "subgoal_spaces_high": [
+        null,
+        [
+            0.6000000238418579,
+            0.07000000029802322,
+            10.0
+        ]
+    ],
+    "subgoal_spaces_low": [
+        null,
+        [
+            -1.2000000476837158,
+            -0.07000000029802322,
+            -10.0
+        ]
+    ],
+    "subgoal_testing_frequency": 0.1,
+    "teacher": null,
+    "use_priority_replay": false,
+    "use_reward_close_instead_of_above_minimum": false,
+    "use_sac": true,
+    "use_tensorboard": true,
+    "writer": null
+}
