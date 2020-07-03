@@ -6,8 +6,8 @@ import torch
 from torch.distributions import Normal, Categorical
 from torch.optim.optimizer import Optimizer
 
-from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous
-from src.training.common import select_action_continuous, select_action_discrete, TrainingInfo, setup_observation_scaler, \
+from teacher.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous
+from teacher.training.common import select_action_continuous, select_action_discrete, TrainingInfo, setup_observation_scaler, \
     scale_state, RunParams, log_on_console, log_on_tensorboard, close_tensorboard, save_model, save_scaler
 
 

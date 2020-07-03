@@ -6,12 +6,12 @@ import torch
 from torch.optim import Adam
 import numpy as np
 
-from src.networks.simple import SimplePolicyContinuous, DDPGPolicy, DDPGValueEstimator, SacPolicy, SacValueEstimator
-from src.training.reinforce import reinforceTraining
-from src.training.common import RunParams
-from src.training.ddpg import DDPGParams, ddpg_train
-from src.training.noise import OUNoise
-from src.training.sac import SacParams, sac_train
+from teacher.networks.simple import SimplePolicyContinuous, DDPGPolicy, DDPGValueEstimator, SacPolicy, SacValueEstimator
+from teacher.training.reinforce import reinforceTraining
+from teacher.training.common import RunParams
+from teacher.training.ddpg import DDPGParams, ddpg_train
+from teacher.training.noise import OUNoise
+from teacher.training.sac import SacParams, sac_train
 
 if __name__ == "__main__":
     # env = gym.make('watershed-v0')

@@ -1,6 +1,6 @@
 import gym
 import gym_watershed
-from src.training.sac import sac_run_from_disk
+from teacher.training.sac import sac_run_from_disk
 import pickle
 
 if __name__ == "__main__":

@@ -5,14 +5,14 @@ import torch
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 
-from src.networks.simple import SimplePolicyContinuous, SimpleCritic, SimplePolicyContinuous2, \
+from teacher.networks.simple import SimplePolicyContinuous, SimpleCritic, SimplePolicyContinuous2, \
     SimpleCritic2, DDPGPolicy, DDPGValueEstimator, SacPolicy, SacValueEstimator
-from src.training.reinforce import reinforceTraining
-from src.training.actor_critic import actor_critic_train_per_episode, actor_critic_train_per_step
-from src.training.common import save_model, RunParams
-from src.training.ddpg import DDPGParams, ddpg_train
-from src.training.noise import OUNoise
-from src.training.sac import SacParams, sac_train
+from teacher.training.reinforce import reinforceTraining
+from teacher.training.actor_critic import actor_critic_train_per_episode, actor_critic_train_per_step
+from teacher.training.common import save_model, RunParams
+from teacher.training.ddpg import DDPGParams, ddpg_train
+from teacher.training.noise import OUNoise
+from teacher.training.sac import SacParams, sac_train
 
 if __name__ == "__main__":
     env = gym.make('MountainCarContinuous-v0')

@@ -1,9 +1,9 @@
 import gym
 import torch
 
-from src.networks.simple import SimplePolicyDiscrete
-from src.training.reinforce import reinforceTraining
-from src.training.common import RunParams
+from teacher.networks.simple import SimplePolicyDiscrete
+from teacher.training.reinforce import reinforceTraining
+from teacher.training.common import RunParams
 
 if __name__ == "__main__":
     env = gym.make('CartPole-v1')

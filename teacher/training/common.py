@@ -12,7 +12,7 @@ import joblib
 
 from datetime import datetime
 
-from src.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, SimpleCritic
+from teacher.networks.simple import SimplePolicyDiscrete, SimplePolicyContinuous, SimpleCritic
 
 
 def tensor_clamp(x: torch.tensor, minimum: np.ndarray, maximum: np.ndarray) -> torch.Tensor:

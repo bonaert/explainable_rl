@@ -1,7 +1,7 @@
 import gym
 
-from src.networks.simple import SimplePolicyDiscrete
-from src.training.common import load_model, run_policy_repeatedly
+from teacher.networks.simple import SimplePolicyDiscrete
+from teacher.training.common import load_model, run_policy_repeatedly
 
 if __name__ == "__main__":
     env = gym.make('CartPole-v1')

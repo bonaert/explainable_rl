@@ -3,11 +3,11 @@ import copy
 import gym
 from torch.optim import Adam
 
-from src.networks.simple import DDPGPolicy, DDPGValueEstimator, SacValueEstimator, SacPolicy
-from src.training.common import RunParams
-from src.training.ddpg import DDPGParams, ddpg_train
-from src.training.noise import OUNoise, NormalNoise
-from src.training.sac import SacParams, sac_train
+from teacher.networks.simple import DDPGPolicy, DDPGValueEstimator, SacValueEstimator, SacPolicy
+from teacher.training.common import RunParams
+from teacher.training.ddpg import DDPGParams, ddpg_train
+from teacher.training.noise import OUNoise, NormalNoise
+from teacher.training.sac import SacParams, sac_train
 import numpy as np
 
 if __name__ == "__main__":

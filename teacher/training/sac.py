@@ -9,12 +9,12 @@ import torch
 from torch.optim.optimizer import Optimizer
 import sklearn.preprocessing
 
-from src.networks.simple import SacPolicy, SacValueEstimator
-from src.training.common import RunParams, TrainingInfo, setup_observation_scaler, scale_state, log_on_console, \
+from teacher.networks.simple import SacPolicy, SacValueEstimator
+from teacher.training.common import RunParams, TrainingInfo, setup_observation_scaler, scale_state, log_on_console, \
     log_on_tensorboard, close_tensorboard, save_model, save_scaler, polyak_average, policy_run, \
     load_model, load_scaler, save_tensor, load_numpy, save_numpy
 
-from src.training.replay_buffer import ReplayBuffer
+from teacher.training.replay_buffer import ReplayBuffer
 
 
 @dataclass
