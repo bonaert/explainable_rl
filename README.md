@@ -47,21 +47,21 @@ saved weights and code I created during the thesis.
 **High-level summary: we can generate good explanations and train hierarchical agent using the HAC-General With Teacher algorithm. The work is mostly complete, except for finishing touches.**
 
  - Created 3 different algorithms to train hierarchical agents:
-    - **[HAC-General](https://github.com/bonaert/explainable_rl/blob/master/hac/hac_general.py)**: a generalization of hierarchical actor critic with hindsight, which does not require the environment to provide a goal and aims to maximize the reward. Experimental results show that the algorithm by itself cannot train an agent succesfully.
-    - **[DAgger-Hierarchical](https://github.com/bonaert/explainable_rl/blob/master/hac/dagger.py)**: a generatlization of DAgger which can train hierarchical agents. The trained hierarchical agent trains fast and achieves great performance, but experiments show that while the explanations tend to be good, they are not always reliable.
-    - **[HAC-General With Teacher](https://github.com/bonaert/explainable_rl/blob/master/hac/hac_general.py)**: this algorithm extends **HAC-General** by using the expert black-box agent to help train the hierarchical agent. This algorithm achieves **both high performance and reliable explanations**, though at the cost of slower training time compared to DAgger-Hierarchical.
+    - **[HAC-General](https://github.com/bonaert/explainable_rl/blob/master/hierarchical_algos/hac_general.py)**: a generalization of hierarchical actor critic with hindsight, which does not require the environment to provide a goal and aims to maximize the reward. Experimental results show that the algorithm by itself cannot train an agent succesfully.
+    - **[DAgger-Hierarchical](https://github.com/bonaert/explainable_rl/blob/master/hierarchical_algos/dagger.py)**: a generatlization of DAgger which can train hierarchical agents. The trained hierarchical agent trains fast and achieves great performance, but experiments show that while the explanations tend to be good, they are not always reliable.
+    - **[HAC-General With Teacher](https://github.com/bonaert/explainable_rl/blob/master/hierarchical_algos/hac_general.py)**: this algorithm extends **HAC-General** by using the expert black-box agent to help train the hierarchical agent. This algorithm achieves **both high performance and reliable explanations**, though at the cost of slower training time compared to DAgger-Hierarchical.
  
  - Create environments which support support visualising goals:
-    - [Mountain Car](https://github.com/bonaert/explainable_rl/blob/master/hac/gym/continuous_mountain_car.py)
-    - [Lunar Lander](https://github.com/bonaert/explainable_rl/blob/master/hac/gym/lunar_lander.py)
+    - [Mountain Car](https://github.com/bonaert/explainable_rl/blob/master/hierarchical_algos/gym/continuous_mountain_car.py)
+    - [Lunar Lander](https://github.com/bonaert/explainable_rl/blob/master/hierarchical_algos/gym/lunar_lander.py)
  - Implemented important RL algorithms, for both discrete and continuous action spaces, which can be used to train the black-box expert:
-    - [REINFORCE / Policy gradient](https://github.com/bonaert/explainable_rl/blob/master/src/training/reinforce.py)
-    - [Actor Critic](https://github.com/bonaert/explainable_rl/blob/master/src/training/actor_critic.py)
-    - [DDPG (Deep Deterministic Policy Gradient)](https://github.com/bonaert/explainable_rl/blob/master/src/training/ddpg.py)
-    - [SAC (Soft Actor Critic)](https://github.com/bonaert/explainable_rl/blob/master/src/training/sac.py)
+    - [REINFORCE / Policy gradient](https://github.com/bonaert/explainable_rl/blob/master/teacher/training/reinforce.py)
+    - [Actor Critic](https://github.com/bonaert/explainable_rl/blob/master/teacher/training/actor_critic.py)
+    - [DDPG (Deep Deterministic Policy Gradient)](https://github.com/bonaert/explainable_rl/blob/master/teacher/training/ddpg.py)
+    - [SAC (Soft Actor Critic)](https://github.com/bonaert/explainable_rl/blob/master/teacher/training/sac.py)
 - Black-box non-hierarchical agents can solve important environments, such as:
-    - [CartPole](https://github.com/bonaert/explainable_rl/blob/master/src/scripts/cartpole.py)
-    - [Pendulum](https://github.com/bonaert/explainable_rl/blob/master/src/scripts/pendulum.py)
-    - [Mountain Car](https://github.com/bonaert/explainable_rl/blob/master/src/scripts/mountaincar.py) (discrete and continuous)
-    - [Lunar Lander](https://github.com/bonaert/explainable_rl/blob/master/src/scripts/lunar_lander_continuous.py)
-    - [Bipedal Walker and Bipedal Walker Hardcore](https://github.com/bonaert/explainable_rl/blob/master/src/scripts/bipedal_walker.py)
+    - [CartPole](https://github.com/bonaert/explainable_rl/blob/master/teacher/scripts/cartpole.py)
+    - [Pendulum](https://github.com/bonaert/explainable_rl/blob/master/teacher/scripts/pendulum.py)
+    - [Mountain Car](https://github.com/bonaert/explainable_rl/blob/master/teacher/scripts/mountaincar.py) (discrete and continuous)
+    - [Lunar Lander](https://github.com/bonaert/explainable_rl/blob/master/teacher/scripts/lunar_lander_continuous.py)
+    - [Bipedal Walker and Bipedal Walker Hardcore](https://github.com/bonaert/explainable_rl/blob/master/teacher/scripts/bipedal_walker.py)
