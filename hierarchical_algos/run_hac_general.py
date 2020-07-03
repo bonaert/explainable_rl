@@ -209,7 +209,7 @@ if __name__ == '__main__':
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
 
-    currently_training = False  # not args.test
+    currently_training = not args.test
     if currently_training:
         exit(0)
         #############################
@@ -280,7 +280,7 @@ if __name__ == '__main__':
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)
     else:
         current_hac_params = load_hac(current_directory)
-        num_successes, success_rate, rewards, steps_per_episode = evaluate_hac(current_hac_params, current_env, render_rounds=100000 if not args.test else 0, num_evals=100)
+        num_successes, success_rate, reached_subgoal_rate, rewards, steps_per_episode = evaluate_hac(current_hac_params, current_env, render_rounds=100000 if not args.test else 0, num_evals=100)
         print("\nSuccess rate (%d/%d): %.3f" % (num_successes, len(rewards), success_rate))
         # noinspection PyStringFormat
         print("Reward: %.3f +- %.3f" % (np.mean(rewards), np.std(rewards)))

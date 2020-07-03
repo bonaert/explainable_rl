@@ -14,7 +14,12 @@ from common import get_range_and_center, json_default, get_plan
 from ddpg import DDPG
 from sac import Sac, SacActor
 from nicetypes import *
-from training.common import scale_state
+
+
+def scale_state(scaler: sklearn.preprocessing.StandardScaler, state: np.ndarray) -> np.ndarray:
+    """ Scales the state given the scaler """
+    return scaler.transform(state.reshape(1, -1))[0]
+
 
 HUGE_PENALTY = -1000
 
