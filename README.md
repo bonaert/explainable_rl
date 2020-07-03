@@ -37,10 +37,30 @@ The yellow square and the arrows indicate current goal, e.g. the position, angle
 ![Explanation for the Lunar Lander environment](https://github.com/bonaert/explainable_rl/blob/master/media/solved_hac_lunar_lander.gif?raw=true)
 
 
-
 This work was produced as part of my 2020 Master thesis in Artificial Intelligence / Machine learning, done
 at the AI lab of the Vrije Universiteit Brussel (VUB). This repository hosts all the algorithms, parameters, 
 saved weights and code I created during the thesis.
+
+## Running the live demonstrations on your computer
+
+If you want to see the hierarchical agent run live on your device instead of a GIF, we have prepared 2 files to do so conveniently:
+
+**Setup**
+
+1. Install the requirements: `pip3 install -r requirements.txt`
+2. Install the environments with goal visualisation: consult the  `gym_with_goal_visualisation` folder and its README.
+
+**Mountain Car Demo**:
+```bash
+cd hierarchical_algos/demos
+python3 run_mountain_car_demo.py
+```
+
+**Lunar Lander Demo**:
+```bash
+cd hierarchical_algos/demos
+python3 run_lunar_lander_demo.py
+```
 
 ## Current status
 
