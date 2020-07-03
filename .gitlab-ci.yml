@@ -24,11 +24,11 @@ before_script:
   - virtualenv venv
   - source venv/bin/activate
   - pip install -r requirements.txt
-  - pip install -e gym-watershed
+  - pip install -e old/gym-watershed
 
 test:
   script:
-  - python3 -m pytest
+  - python3 -m pytest old/test/
 
 #run:
 #  script:

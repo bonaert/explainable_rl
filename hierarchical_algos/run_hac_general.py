@@ -14,10 +14,10 @@ if __name__ == '__main__':
     args = get_args()
     if args.env_name == "NotProvided":
         # env_name = "AntMaze"
-        # env_name = "MountainCar"
+        env_name = "MountainCar"
         # env_name = "Pendulum"
         # env_name = "BipedalWalker-v3"
-        env_name = "LunarLanderContinuous-v2"
+        # env_name = "LunarLanderContinuous-v2"
     else:
         env_name = args.env_name
 
@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
     use_sac = True
     use_priority_replay = False
-    version = 18
+    version = 20
     # current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_basic_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
