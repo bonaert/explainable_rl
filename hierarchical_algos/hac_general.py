@@ -771,15 +771,13 @@ def render_environment(env, hac_params, subgoals_stack, current_state):
             plan_subgoals = get_plan(hac_params.policies[1].actor, current_state, num_iters=10, goal_has_reward=True)
         else:
             plan_subgoals = None
-
-        env.render(state=current_state, goal=subgoals_stack[0][:-1], plan_subgoals=plan_subgoals)
+        env.unwrapped.render(state=current_state, goal=subgoals_stack[0][:-1], plan_subgoals=plan_subgoals)
     elif env.spec.id.startswith("MountainCar"):
         if hac_params.num_levels == 2:
             plan_subgoals = get_plan(hac_params.policies[1].actor, current_state, num_iters=4, goal_has_reward=True)
         else:
             plan_subgoals = None
-        time.sleep(0.05)
-        env.unwrapped.render_goal(subgoals_stack[0][:-1], env_end_goal, plan_subgoals=plan_subgoals)
+        env.unwrapped.render(goal=subgoals_stack[0][:-1], end_goal=env_end_goal, plan_subgoals=plan_subgoals)
     elif hac_params.num_levels == 2:
         env.unwrapped.render_goal(subgoals_stack[0][:-1], env_end_goal)
     elif hac_params.num_levels == 3:
