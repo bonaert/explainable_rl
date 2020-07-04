@@ -104,13 +104,7 @@ class HacParams:
     subgoal_testing_frequency: float
     # If the distance between the state and the goal is below this threshold, we consider that we reached the goal
     state_distance_thresholds: List[List[float]]
-    # When adding Normal noise to the actions, we multiply the (high - low) / 2 by these
-    # coefficients to ge the desired standard deviation
-    # These are used in DDPG, but not in SAC, since SAC introduces noise natively through its entropy maximization
-    # scheme and the use of a Normal Gaussian from which actions are sampled
-    action_noise_coeffs: NumpyArray
-    state_noise_coeffs: NumpyArray
-    reward_noise_coeff: float
+
 
     num_update_steps_when_training: int  # After the episode ended, we do X iterations of the optimization loop
 
@@ -131,7 +125,7 @@ class HacParams:
 
     # (Optional) Teacher that can help the hierarchy learn
     # The teacher is used both to learn goal and low level actions, using rollouts of its actions
-    teacher: SacActor = None
+    teacher: Optional[SacActor] = None
     state_scaler: sklearn.preprocessing.StandardScaler = None
     probability_to_use_teacher: float = 0.5
     learn_low_level_transitions_from_teacher: bool = True
@@ -152,6 +146,14 @@ class HacParams:
                                            # this is the maximum distance allowed
 
     learning_rates: Optional[List[float]] = None  # Learning rate for each agent in the hierarchy
+
+    # When adding Normal noise to the actions, we multiply the (high - low) / 2 by these
+    # coefficients to ge the desired standard deviation
+    # These are used in DDPG, but not in SAC, since SAC introduces noise natively through its entropy maximization
+    # scheme and the use of a Normal Gaussian from which actions are sampled
+    action_noise_coeffs: NumpyArray = None
+    state_noise_coeffs: NumpyArray = None
+    reward_noise_coeff: float = 0
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
     # Important: The user shouldn't fill these themselves! The values will be overwritten.
@@ -212,16 +214,16 @@ class HacParams:
         self.subgoal_size = self.state_size + 1  # (State + reward)
 
         # Only used in DDPG
-        self.subgoal_noise_coeffs = np.hstack([self.state_noise_coeffs, self.reward_noise_coeff])
+        self.subgoal_noise_coeffs = None if self.state_noise_coeffs is None else np.hstack([self.state_noise_coeffs, self.reward_noise_coeff])
 
         for i in range(self.num_levels - 1):
             assert len(self.state_distance_thresholds[i]) == self.state_size, \
                 "Number of distances thresholds at level %d is %d but should be %d (state dim)" % (
                     i, len(self.state_distance_thresholds[i]), self.state_size)
 
-        assert len(self.subgoal_noise_coeffs) == self.subgoal_size, \
+        assert self.subgoal_noise_coeffs is None or len(self.subgoal_noise_coeffs) == self.subgoal_size, \
             "Subgoal noise has %d dims but the states have %d dims" % (len(self.subgoal_noise_coeffs), self.subgoal_size)
-        assert len(self.action_noise_coeffs) == self.action_size, \
+        assert self.action_noise_coeffs is None or len(self.action_noise_coeffs) == self.action_size, \
             "Action noise has %d dims but the actions have %d dims" % (len(self.action_noise_coeffs), self.action_size)
 
         if self.use_tensorboard:
