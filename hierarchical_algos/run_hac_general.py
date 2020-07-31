@@ -208,7 +208,7 @@ if __name__ == '__main__':
     if args.run_on_cluster:
         current_directory = os.environ['VSC_DATA'] + '/' + current_directory
 
-    num_training_episodes = 2000  # args.num_training_episodes
+    num_training_episodes = args.num_training_episodes
     evaluation_frequency = args.eval_frequency
     my_render_rounds = args.render_rounds
     current_num_test_episodes = args.num_test_episodes
@@ -218,7 +218,7 @@ if __name__ == '__main__':
     current_batch_size = args.batch_size
     current_discount = args.discount
     replay_buffer_size = args.replay_buffer_size
-    subgoal_testing_frequency = 0.1  # args.subgoal_testing_frequency
+    subgoal_testing_frequency = args.subgoal_testing_frequency
     num_update_steps_when_training = args.num_update_steps_when_training
     learning_rates = [3e-4, 3e-4]
 
@@ -229,7 +229,6 @@ if __name__ == '__main__':
 
     currently_training = not args.test
     if currently_training:
-        exit(0)
         #############################
         #     Shared parameters     #
         #############################

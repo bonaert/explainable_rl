@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument("--render-rounds", type=int, default=1)
     parser.add_argument("--num-test-episodes", type=int, default=5)
 
-    parser.add_argument("--subgoal-testing-frequency", type=float, default=0.2)
+    parser.add_argument("--subgoal-testing-frequency", type=float, default=0.1)
 
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--replay-buffer-size", type=int, default=2_000_000)
