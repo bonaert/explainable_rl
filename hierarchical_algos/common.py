@@ -31,7 +31,7 @@ def get_args():
 
     parser.add_argument("--num-update-steps-when-training", type=int, default=40)
 
-    parser.add_argument("--discount", type=int, default=0.98)
+    parser.add_argument("--discount", type=float, default=0.98)
 
     parser.add_argument("--all-levels-maximize-reward", action="store_true")
     parser.add_argument("--reward-present-in-input", action="store_true")
@@ -41,6 +41,11 @@ def get_args():
     parser.add_argument("--ignore-rewards-except-top-level", action="store_true")
 
     parser.add_argument("--use-tensorboard", action="store_true")
+    parser.add_argument("--run-on-cluster", action="store_true")
+
+    parser.add_argument("--seed", type=int, default=0)
+
+    parser.add_argument("--use-teacher", action="store_true")
 
     args = parser.parse_args()
     return args

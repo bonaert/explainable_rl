@@ -1,9 +1,13 @@
+import os
+import random
+
 import gym
 import numpy as np
-from hac_general import HacParams, evaluate_hac, train, load_hac
+import torch
+
 from common import get_args, ActionRepeatEnvWrapper
+from hac_general import HacParams, evaluate_hac, train, load_hac
 from training.sac import get_policy_and_scaler
-from training.ddpg import get_policy_and_scaler as get_policy_and_scaler_dppg
 
 if __name__ == '__main__':
     # noinspection PyUnreachableCode
@@ -12,6 +16,13 @@ if __name__ == '__main__':
     ##################################
 
     args = get_args()
+
+    if args.seed != 0:
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        random.seed(args.seed)
+        os.environ['PYTHONHASHSEED'] = str(args.seed)
+
     if args.env_name == "NotProvided":
         # env_name = "AntMaze"
         env_name = "MountainCar"
@@ -59,10 +70,12 @@ if __name__ == '__main__':
         penalty_subgoal_reachability = -200
 
         # Teacher stuff
-        # teacher, scaler = get_policy_and_scaler_dppg(current_env, has_scaler=True)
-        # probability_to_use_teacher = 0.1
-        teacher, scaler = None, None
-        probability_to_use_teacher = 0
+        if args.use_teacher:
+            teacher, scaler = get_policy_and_scaler_dppg(current_env, has_scaler=True)
+            probability_to_use_teacher = 0.1
+        else:
+            teacher, scaler = None, None
+            probability_to_use_teacher = 0
 
         # Q bounds
         q_bound_low_list = [-max_horizons[0], penalty_subgoal_reachability]
@@ -164,10 +177,12 @@ if __name__ == '__main__':
         penalty_subgoal_reachability = -1000.0 * reward_scale
 
         # Teacher stuffLearning rate
-        # teacher, scaler = get_policy_and_scaler(current_env, has_scaler=True)
-        # probability_to_use_teacher = 0.5
-        teacher, scaler = None, None
-        probability_to_use_teacher = 0
+        if args.use_teacher:
+            teacher, scaler = get_policy_and_scaler(current_env, has_scaler=True)
+            probability_to_use_teacher = 0.5
+        else:
+            teacher, scaler = None, None
+            probability_to_use_teacher = 0
 
         # Q bounds
         q_bound_low_list = [-max_horizons[0], penalty_subgoal_reachability]
@@ -189,6 +204,9 @@ if __name__ == '__main__':
     # current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_basic_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
+
+    if args.run_on_cluster:
+        current_directory = os.environ['VSC_DATA'] + '/' + current_directory
 
     num_training_episodes = 2000  # args.num_training_episodes
     evaluation_frequency = args.eval_frequency
@@ -274,7 +292,10 @@ if __name__ == '__main__':
 
             # Q-bounds
             q_bound_low_list=q_bound_low_list,
-            q_bound_high_list=q_bound_high_list
+            q_bound_high_list=q_bound_high_list,
+
+            # Cluster
+            run_on_cluster=args.run_on_cluster
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)

@@ -16,6 +16,9 @@ from sac import Sac, SacActor
 from nicetypes import *
 
 
+import os
+
+
 def scale_state(scaler: sklearn.preprocessing.StandardScaler, state: np.ndarray) -> np.ndarray:
     """ Scales the state given the scaler """
     return scaler.transform(state.reshape(1, -1))[0]
@@ -155,6 +158,9 @@ class HacParams:
     state_noise_coeffs: NumpyArray = None
     reward_noise_coeff: float = 0
 
+    run_on_cluster: bool = False
+    data_dir_path: str = None
+
     # Fields with default value that will be filled with a true value in the __post_init__ method
     # Important: The user shouldn't fill these themselves! The values will be overwritten.
     state_size: int = -1
@@ -226,10 +232,12 @@ class HacParams:
         assert self.action_noise_coeffs is None or len(self.action_noise_coeffs) == self.action_size, \
             "Action noise has %d dims but the actions have %d dims" % (len(self.action_noise_coeffs), self.action_size)
 
+        self.data_dir_path = os.environ['VSC_DATA'] if self.run_on_cluster else '.'
+
         if self.use_tensorboard:
             from torch.utils.tensorboard import SummaryWriter
             current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-            self.writer = SummaryWriter(f"logs/{self.env_name}/{current_time}")
+            self.writer = SummaryWriter(f"{self.data_dir_path}/logs/{self.env_name}/{current_time}")
 
         self.her_storage = [[] for _ in range(self.num_levels)]
         self.policies = []
@@ -747,26 +755,26 @@ def log_to_tensorboard(action, action_reward, current_input, goal, hac_params, l
         hac_params.writer.add_scalar(f"Rewards/Action reward (level {level})", action_reward, hac_params.step_number)
         hac_params.writer.add_scalar(f"Rewards/Total reward (level {level})", total_reward, hac_params.step_number)
 
-        if random.random() < 0.02:  # More extensive logging; don't log too often to avoid slowing things down
-            value1 = hac_params.policies[level].critic1.forward(current_input, goal, action)
-            value2 = hac_params.policies[level].critic2.forward(current_input, goal, action)
-            value1_target = hac_params.policies[level].critic1_target.forward(current_input, goal, action)
-            value2_target = hac_params.policies[level].critic2_target.forward(current_input, goal, action)
-
-            writer, step_number = hac_params.writer, hac_params.step_number
-            if level == 0:
-                for action_index in range(action.shape[0]):
-                    writer.add_scalar(f"Action/(Level {level}) {action_index} ", action[action_index], step_number)
-
-                for state_index in range(next_state.shape[0]):
-                    writer.add_scalar(f"States/(Level {level}) {state_index} ", next_state[state_index], step_number)
-            else:
-                writer.add_scalar(f"Action/Predicted reward (Level {level})", action[-1], step_number)
-
-            writer.add_scalar(f"Q-values/Normal (Level {level}) Network 1", value1, step_number)
-            writer.add_scalar(f"Q-values/Normal (Level {level}) Network 2", value2, step_number)
-            writer.add_scalar(f"Q-values/Target (Level {level}) Network 1", value1_target, step_number)
-            writer.add_scalar(f"Q-values/Target (Level {level}) Network 2", value2_target, step_number)
+        # if random.random() < 0.02:  # More extensive logging; don't log too often to avoid slowing things down
+        #     value1 = hac_params.policies[level].critic1.forward(current_input, goal, action)
+        #     value2 = hac_params.policies[level].critic2.forward(current_input, goal, action)
+        #     value1_target = hac_params.policies[level].critic1_target.forward(current_input, goal, action)
+        #     value2_target = hac_params.policies[level].critic2_target.forward(current_input, goal, action)
+        #
+        #     writer, step_number = hac_params.writer, hac_params.step_number
+        #     if level == 0:
+        #         for action_index in range(action.shape[0]):
+        #             writer.add_scalar(f"Action/(Level {level}) {action_index} ", action[action_index], step_number)
+        #
+        #         for state_index in range(next_state.shape[0]):
+        #             writer.add_scalar(f"States/(Level {level}) {state_index} ", next_state[state_index], step_number)
+        #     else:
+        #         writer.add_scalar(f"Action/Predicted reward (Level {level})", action[-1], step_number)
+        #
+        #     writer.add_scalar(f"Q-values/Normal (Level {level}) Network 1", value1, step_number)
+        #     writer.add_scalar(f"Q-values/Normal (Level {level}) Network 2", value2, step_number)
+        #     writer.add_scalar(f"Q-values/Target (Level {level}) Network 1", value1_target, step_number)
+        #     writer.add_scalar(f"Q-values/Target (Level {level}) Network 2", value2_target, step_number)
 
 
 def render_environment(env, hac_params, subgoals_stack, current_state):
