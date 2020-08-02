@@ -219,7 +219,8 @@ if __name__ == '__main__':
     print(f"Current directory: {current_directory}")
 
     if args.run_on_cluster:
-        current_directory = os.environ['VSC_DATA'] + '/' + current_directory
+        current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+        current_directory = os.environ['VSC_DATA'] + '/' + current_directory + '/' + current_time
 
     num_training_episodes = args.num_training_episodes
     evaluation_frequency = args.eval_frequency
