@@ -381,7 +381,8 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
-    random_transition = random.choice(transitions)  # TODO(maybe use last one only): transitions[-1]
+    random_transition_index = random.randrange(0, len(transitions))
+    random_transition = transitions[random_transition_index]  # TODO(maybe use last one only): transitions[-1]
     total_env_reward, next_input = random_transition[3], random_transition[4]
     next_state = get_state_from_input(next_input, level, hac_params)
     chosen_env_reward = reduce_reward(total_env_reward, percentage=0.5)
@@ -390,7 +391,9 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
     new_subgoals_stack = subgoals_stack[:]
     new_subgoals_stack[-1] = chosen_goal
 
-    for i, transition in enumerate(transitions):
+    # The transitions that happened after the chosen goal are ignored (since they don't lead to the chosen goal,
+    # instead happening afterwards)
+    for i, transition in enumerate(transitions[:random_transition_index+1]):
         # We need to update the transition reward (5), the goal (6) and discount (7)
         # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None, done)
         tr_total_env_reward = transition[3]
@@ -400,7 +403,7 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
         # only for the top level, so we arbitrarily set it to False
         reward, discount = compute_transition_reward_and_discount(
             tr_next_state, None, tr_total_env_reward, chosen_goal, new_subgoals_stack, level, done=False,
-            is_last_step=(i == len(transitions) - 1),  hac_params=hac_params
+            is_last_step=(i == random_transition_index),  hac_params=hac_params
         )
         transition[5] = reward
         transition[6] = chosen_goal
