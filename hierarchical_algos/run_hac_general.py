@@ -64,7 +64,7 @@ if __name__ == '__main__':
             num_levels = 2
             max_horizons = [20]  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
-            state_distance_thresholds = [[0.05, 0.03]]
+            state_distance_thresholds = [[0.05, 0.05]]
         else:
             num_levels = 3
             max_horizons = [20, 15]
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         # Teacher stuff
         if args.use_teacher:
             teacher, scaler = get_policy_and_scaler_ddpg(current_env, has_scaler=True)
-            probability_to_use_teacher = 0.1
+            probability_to_use_teacher = 0.4
         else:
             teacher, scaler = None, None
             probability_to_use_teacher = 0
