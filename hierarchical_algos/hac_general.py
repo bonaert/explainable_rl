@@ -745,7 +745,10 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
         if hac_params.use_tensorboard and num_steps_could_reach_goal > 0:
             hac_params.writer.add_scalar(f"Subgoals/Subgoal success", num_times_reached_subgoal / num_steps_could_reach_goal, hac_params.step_number)
 
-        percentage_reached_subgoal = num_times_reached_subgoal / num_steps_could_reach_goal
+        if num_steps_could_reach_goal == 0:
+            percentage_reached_subgoal = 0.0
+        else:
+            percentage_reached_subgoal = num_times_reached_subgoal / num_steps_could_reach_goal
     else:
         percentage_reached_subgoal = -1.0
 
