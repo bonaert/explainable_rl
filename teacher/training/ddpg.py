@@ -268,7 +268,7 @@ def ddpg_run(env, policy, scaler=None, render=True, run_once=False):
 
 
 def get_policy_and_scaler(env, has_scaler):
-    """ Loads a SAC-trained policy (and optionally a observation / state scaler)"""
+    """ Loads a DDPG-trained policy (and optionally a observation / state scaler)"""
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     ddpg_policy = load_model(

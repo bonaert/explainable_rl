@@ -84,7 +84,7 @@ if __name__ == '__main__':
 
         # Teacher stuff
         if args.use_teacher:
-            teacher, scaler = get_policy_and_scaler_dppg(current_env, has_scaler=True)
+            teacher, scaler = get_policy_and_scaler_ddpg(current_env, has_scaler=True)
             probability_to_use_teacher = 0.1
         else:
             teacher, scaler = None, None
