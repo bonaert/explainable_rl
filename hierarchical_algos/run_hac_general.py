@@ -20,6 +20,7 @@ sys.path.append(teacher_folder)
 from common import get_args, ActionRepeatEnvWrapper
 from hac_general import HacParams, evaluate_hac, train, load_hac
 from training.sac import get_policy_and_scaler
+from training.ddpg import get_policy_and_scaler as get_policy_and_scaler_ddpg
 
 if __name__ == '__main__':
     # noinspection PyUnreachableCode
