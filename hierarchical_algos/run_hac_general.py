@@ -5,6 +5,18 @@ import gym
 import numpy as np
 import torch
 
+# BLOCK START: ENSURE IMPORTS WORK
+import sys
+from pathlib import Path
+
+folder_above = Path(__file__).resolve().parent.as_posix()
+main_folder = Path(__file__).resolve().parent.parent.as_posix()
+teacher_folder = (Path(__file__).resolve().parent.parent / 'teacher').as_posix()
+sys.path.append(folder_above)
+sys.path.append(main_folder)
+sys.path.append(teacher_folder)
+# BLOCK END: ENSURE IMPORTS WORK
+
 from common import get_args, ActionRepeatEnvWrapper
 from hac_general import HacParams, evaluate_hac, train, load_hac
 from training.sac import get_policy_and_scaler
