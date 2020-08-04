@@ -916,6 +916,10 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
         if (i + 1) % hac_params.save_frequency == 0:
             save_hac(hac_params, directory)
 
+        # Flush tensorboard at the end of each episode to ensure things get written to file
+        if hac_params.use_tensorboard:
+            hac_params.writer.flush()
+
 
 def save_hac(hac_params: HacParams, directory="."):
     # Create directory if it doesn't exit
