@@ -158,6 +158,7 @@ class HacParams:
     reward_noise_coeff: float = 0
 
     run_on_cluster: bool = False
+    random_id: Optional[str] = 0
     data_dir_path: str = None
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
@@ -231,12 +232,15 @@ class HacParams:
         assert self.action_noise_coeffs is None or len(self.action_noise_coeffs) == self.action_size, \
             "Action noise has %d dims but the actions have %d dims" % (len(self.action_noise_coeffs), self.action_size)
 
-        self.data_dir_path = os.environ['VSC_DATA'] if self.run_on_cluster else '.'
+        self.data_dir_path = os.environ['VSC_SCRATCH'] if self.run_on_cluster else '.'
 
         if self.use_tensorboard:
             from torch.utils.tensorboard import SummaryWriter
-            current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-            self.writer = SummaryWriter(f"{self.data_dir_path}/logs/{self.env_name}/{current_time}")
+            writer_id = datetime.now().strftime('%b%d_%H-%M-%S')
+            if self.run_on_cluster:
+                writer_id = writer_id + '-' + self.random_id
+
+            self.writer = SummaryWriter(f"{self.data_dir_path}/logs/{self.env_name}/{writer_id}")
 
         self.her_storage = [[] for _ in range(self.num_levels)]
         self.policies = []

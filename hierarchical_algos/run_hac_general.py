@@ -220,9 +220,11 @@ if __name__ == '__main__':
     current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
 
+    random_id = None
     if args.run_on_cluster:
-        current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-        current_directory = os.environ['VSC_DATA'] + '/' + current_directory + '/' + current_time
+        random_id = str(random.randrange(1, 100000))
+        dir_identifier = datetime.now().strftime('%b%d_%H-%M-%S') + '-' + random_id
+        current_directory = os.environ['VSC_SCRATCH'] + '/' + current_directory + '/' + dir_identifier
 
     num_training_episodes = args.num_training_episodes
     evaluation_frequency = args.eval_frequency
@@ -310,7 +312,8 @@ if __name__ == '__main__':
             q_bound_high_list=q_bound_high_list,
 
             # Cluster
-            run_on_cluster=args.run_on_cluster
+            run_on_cluster=args.run_on_cluster,
+            random_id=random_id
         )
 
         train(current_hac_params, current_env, my_render_rounds, directory=current_directory)
