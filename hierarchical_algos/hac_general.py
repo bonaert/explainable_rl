@@ -397,7 +397,8 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # The transitions that happened after the chosen goal are ignored (since they don't lead to the chosen goal,
     # instead happening afterwards)
-    for i, transition in enumerate(transitions[:random_transition_index+1]):
+    # for i, transition in enumerate(transitions[:random_transition_index+1]):
+    for i, transition in enumerate(transitions):
         # We need to update the transition reward (5), the goal (6) and discount (7)
         # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None, done)
         tr_total_env_reward = transition[3]
@@ -407,7 +408,9 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
         # only for the top level, so we arbitrarily set it to False
         reward, discount = compute_transition_reward_and_discount(
             tr_next_state, None, tr_total_env_reward, chosen_goal, new_subgoals_stack, level, done=False,
-            is_last_step=(i == random_transition_index),  hac_params=hac_params
+            # is_last_step=(i == random_transition_index),
+            is_last_step=(i == len(transitions) - 1),
+            hac_params=hac_params
         )
         transition[5] = reward
         transition[6] = chosen_goal
@@ -968,6 +971,7 @@ def load_hac(directory: str = ".") -> HacParams:
                                                    "subgoal_centers", "subgoal_ranges", "reward_low", "reward_high", "penalty_failure_reach_goal"]:
                 hac_params_as_dict[key] = np.array(value, dtype=np.float32)
 
+        hac_params_as_dict['run_on_cluster'] = False
         hac_params = HacParams(**hac_params_as_dict)
 
     # Load the policies
