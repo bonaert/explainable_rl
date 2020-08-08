@@ -397,8 +397,8 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # The transitions that happened after the chosen goal are ignored (since they don't lead to the chosen goal,
     # instead happening afterwards)
-    # for i, transition in enumerate(transitions[:random_transition_index+1]):
-    for i, transition in enumerate(transitions):
+    for i, transition in enumerate(transitions[:random_transition_index+1]):
+    # for i, transition in enumerate(transitions):
         # We need to update the transition reward (5), the goal (6) and discount (7)
         # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None, done)
         tr_total_env_reward = transition[3]
@@ -408,8 +408,8 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
         # only for the top level, so we arbitrarily set it to False
         reward, discount = compute_transition_reward_and_discount(
             tr_next_state, None, tr_total_env_reward, chosen_goal, new_subgoals_stack, level, done=False,
-            # is_last_step=(i == random_transition_index),
-            is_last_step=(i == len(transitions) - 1),
+            is_last_step=(i == random_transition_index),
+            # is_last_step=(i == len(transitions) - 1),
             hac_params=hac_params
         )
         transition[5] = reward
