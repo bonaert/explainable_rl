@@ -910,11 +910,11 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
                 hac_params.writer.add_scalar(f"Eval/Mean number of steps", np.mean(steps_per_episode), i)
                 hac_params.writer.add_scalar(f"Eval/Std dev number of steps", np.std(steps_per_episode), i)
 
-            if np.mean(rewards) > hac_params.env_threshold and reached_subgoal_rate > 0.8:
+            if np.mean(rewards) > hac_params.env_threshold and reached_subgoal_rate > 0.6:
                 # Evaluate over more episodes to be sure it's good enough
                 _, _, reached_subgoal_rate, many_rewards, _ = evaluate_hac(hac_params, env, render_rounds=0, num_evals=20)
 
-                if np.mean(many_rewards) > hac_params.env_threshold and reached_subgoal_rate > 0.8:
+                if np.mean(many_rewards) > hac_params.env_threshold and reached_subgoal_rate > 0.6:
                     print("Perfect success rate. Stopping training and saving model.")
                     save_hac(hac_params, directory)
                     return
