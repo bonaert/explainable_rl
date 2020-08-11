@@ -32,6 +32,7 @@ def get_args():
     parser.add_argument("--num-update-steps-when-training", type=int, default=40)
 
     parser.add_argument("--discount", type=float, default=0.98)
+    parser.add_argument("--alpha", type=float, default=0.1)
 
     parser.add_argument("--all-levels-maximize-reward", action="store_true")
     parser.add_argument("--reward-present-in-input", action="store_true")

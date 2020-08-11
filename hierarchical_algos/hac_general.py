@@ -135,6 +135,7 @@ class HacParams:
     # These fields have a default value but the user should be able
     # to override them.
     use_sac: bool = False  # By default we use DDPG, but we can switch to SAC
+    alpha: float = 0.1
     all_levels_maximize_reward: bool = False  # If True, all levels maximize the reward while trying to reach the goal.
                                               # If False, they just try to reach the goal
     reward_present_in_input: bool = False   # Should the total environment reward be present in the input (could help with goal prediction)
@@ -275,7 +276,8 @@ class HacParams:
                     writer=self.get_tensorboard_writer() if self.use_tensorboard else None,
                     sac_id='Level %d' % level,
                     use_priority_replay=self.use_priority_replay,
-                    learning_rate=learning_rate
+                    learning_rate=learning_rate,
+                    alpha=self.alpha
                 )
             else:
                 agent = DDPG(

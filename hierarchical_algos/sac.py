@@ -142,7 +142,7 @@ class Sac(nn.Module):
     def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray,
                  q_bound_low: float, q_bound_high: float,
                  buffer_size: int, batch_size: int, writer, sac_id: Optional[str],
-                 use_priority_replay: bool, learning_rate: float):
+                 use_priority_replay: bool, learning_rate: float, alpha: float):
         super().__init__()
         self.action_size = len(action_low)
         self.use_priority_replay = use_priority_replay
@@ -163,8 +163,8 @@ class Sac(nn.Module):
             for parameter in network.parameters():
                 parameter.requires_grad = False
 
-        self.polyak = 0.995  # TODO: add this to params
-        self.alpha = 0.01  # TODO: add this to params
+        self.polyak = 0.995
+        self.alpha = alpha # 0.01  # TODO: add this to params
 
         # 8 transitions dims: (current_state, action, env_reward, total_reward, next_state, transition_reward, current_goal, discount)
         # NOTE: they use some more complicated logic (which depends on the level) to determinate the size of the buffer
