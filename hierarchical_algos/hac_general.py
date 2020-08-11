@@ -385,7 +385,7 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
-    random_transition_index = random.randrange(0, len(transitions))
+    random_transition_index = random.randrange(int(len(transitions) * 0.75), len(transitions))
     random_transition = transitions[random_transition_index]  # TODO(maybe use last one only): transitions[-1]
     total_env_reward, next_input = random_transition[3], random_transition[4]
     next_state = get_state_from_input(next_input, level, hac_params)
@@ -499,7 +499,7 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
         total_reward += reward
 
         if training:
-            incomplete_transitions.append((state, action, next_state, reward, total_reward))
+            incomplete_transitions.append((state, action, next_state, reward, total_reward, done))
 
         state = next_state
 
@@ -513,11 +513,14 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
     final_state, reduced_total_reward = next_state, reduce_reward(total_reward, percentage=0.5)
     goal = np.hstack([final_state, reduced_total_reward])
     bottom_level_transitions = []
-    for (state, action, next_state, reward, cumulated_reward) in incomplete_transitions:
+    for (state, action, next_state, reward, cumulated_reward, done) in incomplete_transitions:
         if reached_subgoal(state, cumulated_reward, goal, level=0, hac_params=hac_params):
             tr_reward, discount = 0.0, 0.0
         else:
             tr_reward, discount = -1.0, hac_params.discount
+
+        if done:
+            discount = 0.0
 
         bottom_level_transitions.append(mk_transition(
             state, action, reward, cumulated_reward, next_state, tr_reward, goal, discount
