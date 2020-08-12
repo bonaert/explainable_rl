@@ -113,12 +113,12 @@ class TrainingInfo:
         self.state_values.append(state_value)
         self.episode_reward += reward
 
-    def update_running_reward(self):
+    def update_running_reward(self, rate=0.05):
         """ Updates the running reward after the end of an episode """
         if self.running_reward is None:  # First episode ever
             self.running_reward = self.episode_reward
         else:
-            self.running_reward = 0.05 * self.episode_reward + 0.95 * self.running_reward
+            self.running_reward = rate * self.episode_reward + (1 - rate) * self.running_reward
 
     def compute_discounted_rewards(self):
         """ Compute the discounted rewards of the last episode, normalizing using all the discounted

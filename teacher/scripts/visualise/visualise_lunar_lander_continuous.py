@@ -1,7 +1,8 @@
 import gym
 
 from teacher.training.ddpg import ddpg_run_from_disk
-from teacher.training.sac import sac_run_from_disk
+# from teacher.training.sac import sac_run_from_disk
+from teacher.training.sacEntropyAdjustment import sac_run_from_disk
 
 if __name__ == "__main__":
     env = gym.make('LunarLanderContinuous-v2')
