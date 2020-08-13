@@ -215,6 +215,7 @@ if __name__ == '__main__':
     # TODO(idea): ensure the lower level does at least X steps
 
     use_sac = True
+    use_sac_with_entropy_adjustment = True
     use_priority_replay = False
     version = 20
     # current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_basic_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
@@ -293,6 +294,7 @@ if __name__ == '__main__':
             use_priority_replay=use_priority_replay,
             penalty_subgoal_reachability=penalty_subgoal_reachability,
             use_sac=use_sac,
+            use_sac_with_entropy_adjustment=use_sac_with_entropy_adjustment,
             alpha=alpha,
             all_levels_maximize_reward=all_levels_maximize_reward,
             reward_present_in_input=reward_present_in_input,
