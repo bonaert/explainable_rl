@@ -532,7 +532,7 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
     assert not hac_params.all_levels_maximize_reward, "Teacher-guiding currently not compatible with all levels maximizing reward"
     assert not hac_params.reward_present_in_input, "Teacher-guiding currently not compatible with reward present in input"
 
-    final_state, reduced_total_reward = next_state, reduce_reward(total_reward, percentage=0.3)
+    final_state, reduced_total_reward = next_state, reduce_reward(total_reward, percentage=0.5)
     goal = np.hstack([final_state, reduced_total_reward])
     bottom_level_transitions = []
     for (state, action, next_state, reward, cumulated_reward, done) in incomplete_transitions:
@@ -679,7 +679,7 @@ def run_HAC_level(level: int, start_state: NumpyArray, goal: NumpyArray,
         if level > 0 and lower_level_failed_to_reach_its_goal:
             # TODO(think): can I switch to this without creating problems where the action I train on
             # TODO(think)  is different from the action the agent I actually picked
-            chosen_reward = reduce_reward(action_reward, percentage=0.3)
+            chosen_reward = reduce_reward(action_reward, percentage=0.5)
             # chosen_reward = action_reward
             hindsight_action = np.hstack([next_state, chosen_reward])  # Replace original action with action executed in hindsight
         else:
