@@ -5,12 +5,14 @@ from typing import List, Tuple
 
 import numpy as np
 from pathlib import Path
+from datetime import datetime
 
 import gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from common import get_tensor, ReplayBuffer, get_range_and_center, json_default, NEVER, FIRST_RUN, ALWAYS
@@ -341,9 +343,10 @@ def pick_action_and_testing(state: np.ndarray, goal: np.ndarray, level: int, is_
 def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                   env: gym.Env, hac_params: HacParams,
                   is_testing_subgoal: bool, subgoals_stack: List[np.ndarray],
-                  training: bool, render: bool) -> Tuple[np.ndarray, bool]:
+                  training: bool, render: bool) -> Tuple[np.ndarray, bool, float]:
     current_state = start_state
     num_attempts = 0
+    total_reward = 0
     while num_attempts < hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params):
         # Step 1: sample a (noisy) action from the policy
         action, next_is_testing_subgoal = pick_action_and_testing(current_state, goal, level, is_testing_subgoal, env, hac_params, training)
@@ -354,18 +357,20 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         if level > 0:
             # Train level i − 1 using subgoal ai
             subgoals_stack.append(action)
-            next_state, lower_level_layer_maxed_out = run_HAC_level(level - 1, current_state, action, env, hac_params,
+            next_state, lower_level_layer_maxed_out, reward = run_HAC_level(level - 1, current_state, action, env, hac_params,
                                                                     next_is_testing_subgoal, subgoals_stack, training, render)
             assert next_state is not None, "next_state is None!"
             subgoals_stack.pop()
         else:
-            next_state, _, _, _ = env.step(action)
+            next_state, reward, _, _ = env.step(action)
             if render:
                 env.render()
                 # if hac_params.num_levels == 2:
                 #     env.unwrapped.render_goal(*subgoals_stack[::-1])
                 # elif hac_params.num_levels == 3:
                 #     env.unwrapped.render_goal_2(*subgoals_stack[::-1])
+
+        total_reward += reward
 
         # Step 3: create replay transitions
         if level > 0 and lower_level_layer_maxed_out:
@@ -418,7 +423,7 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
 
     # Step 4: return the current (final) state and maxed_out
     maxed_out = (num_attempts == hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params))
-    return current_state, maxed_out
+    return current_state, maxed_out, total_reward
 
 
 def update_networks(hac_params: HacParams):
@@ -432,22 +437,27 @@ def run_hac(hac_params: HacParams, start_state: np.ndarray, goal_state: np.ndarr
 
 
 def evaluate_hac(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray,
-                 render_frequency: int, num_evals: int = 20) -> Tuple[int, float]:
+                 render_frequency: int, num_evals: int = 20) -> Tuple[int, float, float]:
     with torch.no_grad():
         num_successes = 0
+        cumulated_reward = 0
         for i in range(num_evals):
             state = env.reset()
             render_now = (render_frequency == ALWAYS) or (render_frequency == FIRST_RUN and i == 0)
-            _, failed = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
+            _, failed, total_reward = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
 
+            cumulated_reward += total_reward
             if not failed:
                 num_successes += 1
 
     success_rate = num_successes / float(num_evals)
-    return num_successes, success_rate
+    average_reward = cumulated_reward / float(num_evals)
+    return num_successes, success_rate, average_reward
 
 
 def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_frequency: int, directory: str):
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+    writer = SummaryWriter(f"logs/{env.spec.id}/{current_time}")
     for i in tqdm(range(hac_params.num_training_episodes)):
         # Train HAC
         state = env.reset()
@@ -456,8 +466,11 @@ def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_fr
 
         # Evaluate HAC
         if i == 0 or (i + 1) % hac_params.evaluation_frequency == 0:
-            num_successes, success_rate = evaluate_hac(hac_params, env, goal_state, render_frequency)
-            print("\nStep %d: Success rate (%d/20): %.3f" % (i + 1, num_successes, success_rate))
+            num_successes, success_rate, avg_reward = evaluate_hac(hac_params, env, goal_state, render_frequency)
+            print("\nStep %d: Success rate (%d/20): %.3f, Average Reward %.3f" % (i + 1, num_successes, success_rate, avg_reward))
+
+            writer.add_scalar('Eval/Success Rate', success_rate, i)
+            writer.add_scalar('Eval/Mean Reward', avg_reward, i)
 
             if success_rate == 1.0:
                 print("Perfect success rate. Stopping training and saving model.")

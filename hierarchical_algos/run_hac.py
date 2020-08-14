@@ -9,9 +9,9 @@ if __name__ == '__main__':
     #     Environment parameters     #
     ##################################
     # env_name = "AntMaze"
-    # env_name = "MountainCar"
+    env_name = "MountainCar"
     # env_name = "Pendulum"
-    env_name = "LunarLanderContinuous-v2"
+    # env_name = "LunarLanderContinuous-v2"
     if env_name == "AntMaze":
         # distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # max_horizons = 10  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
@@ -23,7 +23,7 @@ if __name__ == '__main__':
         current_goal_state = np.array([0.48, 0.04])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L45
 
         # noinspection PyUnreachableCode
-        if False:
+        if True:
             num_levels = 2
             max_horizons = [20, 20]  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
@@ -74,13 +74,14 @@ if __name__ == '__main__':
     #     Regularly changed parameters     #
     ########################################
     args = get_args()
-    version = 2
+    version = 3
     current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    current_directory = f"logs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
     currently_training = True
     render_frequency = NEVER if args.no_render else FIRST_RUN
-    num_training_episodes = 5000
-    evaluation_frequency = 50
+    num_training_episodes = 2000
+    evaluation_frequency = 30
 
     #############################
     #     Shared parameters     #
@@ -90,7 +91,7 @@ if __name__ == '__main__':
     batch_size = 128  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L56
 
     # discount=0.98  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/master/critic.py#L8
-    discount = 0.95
+    discount = 0.98
 
     # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L54
     # Note: this parameters is actually more complicated than this, because the buffer size depends on the level
