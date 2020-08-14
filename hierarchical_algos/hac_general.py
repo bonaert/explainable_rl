@@ -407,7 +407,7 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
-    random_transition_index = random.randrange(int(len(transitions) * 0.75), len(transitions))
+    random_transition_index = len(transitions) - 1 # random.randrange(int(len(transitions) * 0.75), len(transitions))
     random_transition = transitions[random_transition_index]  # TODO(maybe use last one only): transitions[-1]
     total_env_reward, next_input = random_transition[3], random_transition[4]
     next_state = get_state_from_input(next_input, level, hac_params)
