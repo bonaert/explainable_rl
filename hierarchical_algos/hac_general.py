@@ -407,7 +407,8 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
-    random_transition_index = len(transitions) - 1 # random.randrange(int(len(transitions) * 0.75), len(transitions))
+    # random_transition_index = len(transitions) - 1 # random.randrange(int(len(transitions) * 0.75), len(transitions))
+    random_transition_index = random.randrange(0, len(transitions))
     random_transition = transitions[random_transition_index]  # TODO(maybe use last one only): transitions[-1]
     total_env_reward, next_input = random_transition[3], random_transition[4]
     next_state = get_state_from_input(next_input, level, hac_params)
@@ -419,8 +420,8 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # The transitions that happened after the chosen goal are ignored (since they don't lead to the chosen goal,
     # instead happening afterwards)
-    # for i, transition in enumerate(transitions[:random_transition_index+1]):
-    for i, transition in enumerate(transitions):
+    for i, transition in enumerate(transitions[:random_transition_index+1]):
+    # for i, transition in enumerate(transitions):
         # We need to update the transition reward (5), the goal (6) and discount (7)
         # goal_transition = (current_state, action, env_reward, total_env_reward, next_state, None, None, None, done)
         tr_total_env_reward = transition[3]
@@ -541,8 +542,8 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
         else:
             tr_reward, discount = -1.0, hac_params.discount
 
-        if done:
-            discount = 0.0
+        # if done:
+        #     discount = 0.0
 
         bottom_level_transitions.append(mk_transition(
             state, action, reward, cumulated_reward, next_state, tr_reward, goal, discount
