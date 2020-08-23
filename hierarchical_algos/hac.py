@@ -179,6 +179,8 @@ class HacParams:
 
     save_frequency: int
 
+    env_name: str
+
     # Fields with default value that will be filled with a true value in the __post_init__ method
     state_size: int = -1
     action_size: int = -1
@@ -193,8 +195,9 @@ class HacParams:
     policies: List[DDPG] = field(default_factory=list)
 
     def __post_init__(self):
-        self.state_low = np.array([-2, -5, -3, -3, -10, -10, 0, 0], dtype=np.float32)
-        self.state_high = np.array([2, 5, 3, 3, 20, 10, 1, 1], dtype=np.float32)
+        if self.env_name.startswith("LunarLander"):
+            self.state_low = np.array([-2, -5, -3, -3, -5, -5, 0, 0], dtype=np.float32)
+            self.state_high = np.array([2,  5,  3,  3,  5,  5, 1, 1], dtype=np.float32)
 
         # This method is executed at the end of the constructor. Here, I can setup the list I need
         # I do some validation then setup some variables with their real value
@@ -296,8 +299,9 @@ def get_random_action(level: int, env: gym.Env) -> np.ndarray:
         return np.random.uniform(env.action_space.low, env.action_space.high)
     else:
         state_low, state_high = env.observation_space.low, env.observation_space.high
-        state_low = np.array([-2, -5, -3, -3, -10, -10, 0, 0], dtype=np.float32)
-        state_high = np.array([2, 5, 3, 3, 20, 10, 1, 1], dtype=np.float32)
+        if env.spec.id.startswith("LunarLander"):
+            state_low = np.array([-2, -5, -3, -3, -5, -5, 0, 0], dtype=np.float32)
+            state_high = np.array([2,  5,  3,  3,  5,  5, 1, 1], dtype=np.float32)
         return np.random.uniform(state_low, state_high)
 
 
@@ -343,11 +347,12 @@ def pick_action_and_testing(state: np.ndarray, goal: np.ndarray, level: int, is_
 def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
                   env: gym.Env, hac_params: HacParams,
                   is_testing_subgoal: bool, subgoals_stack: List[np.ndarray],
-                  training: bool, render: bool) -> Tuple[np.ndarray, bool, float]:
+                  training: bool, render: bool) -> Tuple[np.ndarray, bool, float, bool]:
     current_state = start_state
     num_attempts = 0
     total_reward = 0
-    while num_attempts < hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params):
+    done = False
+    while not done and num_attempts < hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params):
         # Step 1: sample a (noisy) action from the policy
         action, next_is_testing_subgoal = pick_action_and_testing(current_state, goal, level, is_testing_subgoal, env, hac_params, training)
 
@@ -357,14 +362,14 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         if level > 0:
             # Train level i − 1 using subgoal ai
             subgoals_stack.append(action)
-            next_state, lower_level_layer_maxed_out, reward = run_HAC_level(level - 1, current_state, action, env, hac_params,
+            next_state, lower_level_layer_maxed_out, reward, done = run_HAC_level(level - 1, current_state, action, env, hac_params,
                                                                     next_is_testing_subgoal, subgoals_stack, training, render)
             assert next_state is not None, "next_state is None!"
             subgoals_stack.pop()
         else:
-            next_state, reward, _, _ = env.step(action)
+            next_state, reward, done, _ = env.step(action)
             if render:
-                env.render()
+                env.unwrapped.render(goal=goal, end_goal=None, mode='human', plan_subgoals=None)
                 # if hac_params.num_levels == 2:
                 #     env.unwrapped.render_goal(*subgoals_stack[::-1])
                 # elif hac_params.num_levels == 3:
@@ -422,8 +427,8 @@ def run_HAC_level(level: int, start_state: np.ndarray, goal: np.ndarray,
         hac_params.her_storage[level].clear()
 
     # Step 4: return the current (final) state and maxed_out
-    maxed_out = (num_attempts == hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params))
-    return current_state, maxed_out, total_reward
+    maxed_out = done or (num_attempts == hac_params.max_horizons[level] and not reached_any_supergoal(current_state, subgoals_stack, level, hac_params))
+    return current_state, maxed_out, total_reward, done
 
 
 def update_networks(hac_params: HacParams):
@@ -444,7 +449,7 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray,
         for i in range(num_evals):
             state = env.reset()
             render_now = (render_frequency == ALWAYS) or (render_frequency == FIRST_RUN and i == 0)
-            _, failed, total_reward = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
+            _, failed, total_reward, done = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
 
             cumulated_reward += total_reward
             if not failed:

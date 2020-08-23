@@ -9,9 +9,9 @@ if __name__ == '__main__':
     #     Environment parameters     #
     ##################################
     # env_name = "AntMaze"
-    env_name = "MountainCar"
+    # env_name = "MountainCar"
     # env_name = "Pendulum"
-    # env_name = "LunarLanderContinuous-v2"
+    env_name = "LunarLanderContinuous-v2"
     if env_name == "AntMaze":
         # distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # max_horizons = 10  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
@@ -75,12 +75,12 @@ if __name__ == '__main__':
     ########################################
     args = get_args()
     version = 3
-    current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    # current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     current_directory = f"logs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     print(f"Current directory: {current_directory}")
     currently_training = True
-    render_frequency = NEVER if args.no_render else FIRST_RUN
-    num_training_episodes = 2000
+    render_frequency = NEVER # NEVER if args.no_render else FIRST_RUN
+    num_training_episodes = 10000
     evaluation_frequency = 30
 
     #############################
@@ -118,7 +118,8 @@ if __name__ == '__main__':
         subgoal_noise_coeffs=subgoal_noise_coeffs,
         num_update_steps_when_training=num_update_steps_when_training,
         evaluation_frequency=evaluation_frequency,
-        save_frequency=evaluation_frequency
+        save_frequency=evaluation_frequency,
+        env_name=current_env.spec.id
     )
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
