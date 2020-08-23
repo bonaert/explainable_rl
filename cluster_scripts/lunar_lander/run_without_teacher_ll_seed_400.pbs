@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+#PBS -l nodes=1:ppn=4
+#PBS -l walltime=72:00:00
+#PBS -l mem=20gb
+
+cd $PBS_O_WORKDIR
+cd .. # cluster_scripts
+cd .. # explainable_rl
+
+module purge
+module load PyTorch/1.4.0-foss-2019b-Python-3.7.4
+module load OpenAI-Gym/0.17.1-foss-2019b-Python-3.7.4
+module load scikit-learn/0.22.1-foss-2019b-Python-3.7.4
+module load TensorFlow/2.1.0-foss-2019b-Python-3.7.4
+
+python3 hierarchical_algos/run_hac_general.py --render-rounds 0 --no-render  --discount 0.98 --subgoal-testing-frequency 0.35 --eval-frequency 30 --use-tensorboard --run-on-cluster  --seed 400 --env-name "LunarLanderContinuous-v2" --num-training-episodes 10000
