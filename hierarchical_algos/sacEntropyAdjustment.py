@@ -157,6 +157,7 @@ class SacEntropyAdjustment(nn.Module):
         self.actor_target = copy.deepcopy(self.actor)
 
         initial_log_alpha = math.log(initial_alpha)
+        self.alpha = initial_alpha
         self.log_alpha = torch.tensor([initial_log_alpha], requires_grad=True)
         self.target_entropy = -np.prod(action_low.shape).item()  # Use heuristic value from SAC paper
 
@@ -321,3 +322,39 @@ class SacEntropyAdjustment(nn.Module):
                 target_q_values = torch.clamp(target_q_values, min=self.q_bound_low, max=self.q_bound_high)
 
             return target_q_values, values1, values2
+
+
+if __name__ == '__main__':
+    import gym
+    env = gym.make("LunarLanderContinuous-v2")
+    s = SacEntropyAdjustment(state_size=8, goal_size=0,
+                             action_low=env.action_space.low,
+                             action_high=env.action_space.high,
+                             q_bound_low=-500, q_bound_high=300,
+                             buffer_size=200_000, batch_size=128,
+                             writer=None, sac_id="Test", use_priority_replay=False,
+                             learning_rate=3e-4, initial_alpha=0.01)
+
+    running_reward = 0
+    episode_num = 0
+    while running_reward < 200:
+        done = False
+        state = env.reset()
+        total_reward = 0
+        num_steps = 0
+        while not done:
+            a = s.sample_action(state, None)
+            next_state, reward, done, _ = env.step(a)
+            total_reward += reward
+            s.add_to_buffer(
+                (state, a, reward, total_reward, next_state, reward, None, 0.98 if not done else 0)
+            )
+            state = next_state
+            num_steps += 1
+            s.learn(1)
+
+        running_reward = 0.95 * running_reward + 0.05 * total_reward
+        print(f"Ep {episode_num} - Episode reward: {total_reward}     Running reward: {running_reward}      Alpha:  {float(s.alpha)}    Num steps: {num_steps}")
+        episode_num += 1
+
+
