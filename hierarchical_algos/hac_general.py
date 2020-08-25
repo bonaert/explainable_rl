@@ -932,6 +932,7 @@ def train(hac_params: HacParams, env: gym.Env, render_rounds: int, directory: st
 
             if hac_params.use_tensorboard:
                 hac_params.writer.add_scalar(f"Eval/Success rate", success_rate, i)
+                hac_params.writer.add_scalar(f"Eval/Goal Success rate", reached_subgoal_rate, i)
                 hac_params.writer.add_scalar(f"Eval/Mean reward", np.mean(rewards), i)
                 hac_params.writer.add_scalar(f"Eval/Mean number of steps", np.mean(steps_per_episode), i)
                 hac_params.writer.add_scalar(f"Eval/Std dev number of steps", np.std(steps_per_episode), i)

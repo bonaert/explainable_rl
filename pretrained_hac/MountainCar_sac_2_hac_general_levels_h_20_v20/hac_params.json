@@ -17,6 +17,7 @@
     "action_size": 1,
     "all_levels_maximize_reward": false,
     "batch_size": 128,
+    "data_dir_path": "/data/brussel/102/vsc10297",
     "desired_reward_closeness": 0.5,
     "discount": 0.98,
     "env_name": "MountainCarContinuous-v0",
@@ -36,7 +37,7 @@
     ],
     "num_levels": 2,
     "num_test_episodes": 5,
-    "num_training_episodes": 50000,
+    "num_training_episodes": 2000,
     "num_update_steps_when_training": 40,
     "penalty_failure_reach_goal": [
         -10.0
@@ -45,7 +46,7 @@
     "policies": [
         "The models are stored in the 'policies.ckpt' file because otherwise this JSON file would be huge and unreadable.\n The load_hac() will deserialize both this JSON file and the policies, and then merge the results."
     ],
-    "probability_to_use_teacher": 0.1,
+    "probability_to_use_teacher": 0.4,
     "q_bound_high_list": [
         0.0,
         100
@@ -65,11 +66,12 @@
     ],
     "reward_noise_coeff": 1,
     "reward_present_in_input": false,
+    "run_on_cluster": true,
     "save_frequency": 30,
     "state_distance_thresholds": [
         [
             0.05,
-            0.03
+            0.05
         ]
     ],
     "state_high": [
@@ -86,7 +88,7 @@
     ],
     "state_scaler": null,
     "state_size": 2,
-    "step_number": 609784,
+    "step_number": 349030,
     "stop_episode_on_subgoal_failure": false,
     "subgoal_centers": [
         null,
