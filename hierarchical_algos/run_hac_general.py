@@ -51,7 +51,6 @@ if __name__ == '__main__':
     overriden_state_space_high = None
     teacher = None
     learn_low_level_transitions_from_teacher = True
-    alpha = args.alpha
 
     if env_name == "AntMaze":
         # state_distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
@@ -215,7 +214,6 @@ if __name__ == '__main__':
     # TODO(idea): ensure the lower level does at least X steps
 
     use_sac = True
-    use_sac_with_entropy_adjustment = True
     use_priority_replay = False
     version = 20
     # current_directory = f"runs/{env_name}_{'sac' if use_sac else 'ddpg'}_{num_levels}_hac_general_basic_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
@@ -294,8 +292,6 @@ if __name__ == '__main__':
             use_priority_replay=use_priority_replay,
             penalty_subgoal_reachability=penalty_subgoal_reachability,
             use_sac=use_sac,
-            use_sac_with_entropy_adjustment=use_sac_with_entropy_adjustment,
-            alpha=alpha,
             all_levels_maximize_reward=all_levels_maximize_reward,
             reward_present_in_input=reward_present_in_input,
             num_test_episodes=current_num_test_episodes,

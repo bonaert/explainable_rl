@@ -34,7 +34,7 @@ if __name__ == '__main__':
     print(f"Pretrained HAC directory: {pretrained_hac_dir}")
 
     current_hac_params = load_hac(pretrained_hac_dir)
-    num_successes, success_rate, reached_subgoal_rate, rewards, steps_per_episode = evaluate_hac(current_hac_params, current_env, render_rounds=0, num_evals=100)
+    num_successes, success_rate, reached_subgoal_rate, rewards, steps_per_episode = evaluate_hac(current_hac_params, current_env, render_rounds=10, num_evals=100)
 
     print("\nSuccess rate (%d/%d): %.3f" % (num_successes, len(rewards), success_rate))
     # noinspection PyStringFormat

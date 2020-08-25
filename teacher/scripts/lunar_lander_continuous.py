@@ -7,8 +7,8 @@ from teacher.networks.simple import DDPGPolicy, DDPGValueEstimator, SacPolicy, S
 from teacher.training.common import RunParams
 from teacher.training.ddpg import DDPGParams, ddpg_train
 from teacher.training.noise import OUNoise, NormalNoise
-# from teacher.training.sac import SacParams, sac_train
-from teacher.training.sacEntropyAdjustment import SacEntropyAdjustmentParams, sac_entropy_adjustment_train
+from teacher.training.sac import SacParams, sac_train
+# from teacher.training.sacEntropyAdjustment import SacEntropyAdjustmentParams, sac_entropy_adjustment_train
 
 if __name__ == "__main__":
     env = gym.make('LunarLanderContinuous-v2')
@@ -52,26 +52,7 @@ if __name__ == "__main__":
     sac_value_estimator2 = SacValueEstimator(state_dim, action_dim)
     value_parameters = list(sac_value_estimator1.parameters()) + list(sac_value_estimator2.parameters())
 
-    # sac_params = SacParams(
-    #     policy=sac_policy,
-    #     policy_target=copy.deepcopy(sac_policy),
-    #     value_estimator1=sac_value_estimator1,
-    #     value_estimator2=sac_value_estimator2,
-    #     value_estimator1_target=copy.deepcopy(sac_value_estimator1),
-    #     value_estimator2_target=copy.deepcopy(sac_value_estimator2),
-    #     policy_optimizer=Adam(sac_policy.parameters(), lr=1e-3),  # Same LR for both policy and value
-    #     value_optimizer=Adam(value_parameters, lr=1e-3),
-    #     replay_buffer_size=1000000,
-    #     batch_size=100,
-    #     polyak=0.995,
-    #     num_random_action_steps=10000,
-    #     alpha=0.2,
-    #     num_test_episodes=10,
-    #     test_frequency=20
-    # )
-
-    sac_params = SacEntropyAdjustmentParams(
-        env=env,
+    sac_params = SacParams(
         policy=sac_policy,
         policy_target=copy.deepcopy(sac_policy),
         value_estimator1=sac_value_estimator1,
@@ -84,11 +65,31 @@ if __name__ == "__main__":
         batch_size=100,
         polyak=0.995,
         num_random_action_steps=10000,
+        alpha=0.2,
         num_test_episodes=10,
-        test_frequency=20,
-        initial_alpha=0.1,
+        test_frequency=20
     )
 
-    sac_entropy_adjustment_train(env, run_params, sac_params)
+    # sac_params = SacEntropyAdjustmentParams(
+    #     env=env,
+    #     policy=sac_policy,
+    #     policy_target=copy.deepcopy(sac_policy),
+    #     value_estimator1=sac_value_estimator1,
+    #     value_estimator2=sac_value_estimator2,
+    #     value_estimator1_target=copy.deepcopy(sac_value_estimator1),
+    #     value_estimator2_target=copy.deepcopy(sac_value_estimator2),
+    #     policy_optimizer=Adam(sac_policy.parameters(), lr=1e-3),  # Same LR for both policy and value
+    #     value_optimizer=Adam(value_parameters, lr=1e-3),
+    #     replay_buffer_size=1000000,
+    #     batch_size=100,
+    #     polyak=0.995,
+    #     num_random_action_steps=10000,
+    #     num_test_episodes=10,
+    #     test_frequency=20,
+    #     initial_alpha=0.1,
+    # )
+
+    sac_train(env, run_params, sac_params)
+    # sac_entropy_adjustment_train(env, run_params, sac_params)
 
     env.close()  # To avoid benign but annoying errors when the gym render window closes

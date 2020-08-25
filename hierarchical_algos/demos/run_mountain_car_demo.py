@@ -26,12 +26,12 @@ if __name__ == '__main__':
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
 
     # pretrained_hac_dir = f"../../pretrained_hac/MountainCar_sac_2_hac_general_levels_h_20_v20"
-    pretrained_hac_dir = f"../../pretrained_hac/MountainCar/Aug04_19-54-24"  # No teacher
-    # "pretrained_hac/MountainCar/Aug04_19-51-26"
+    # pretrained_hac_dir = f"../../pretrained_hac/MountainCar/Aug04_19-54-24"  # No teacher
+    pretrained_hac_dir = f"../../pretrained_hac/MountainCar/Aug04_19-51-26"  # With teacher
     print(f"Pretrained HAC directory: {pretrained_hac_dir}")
 
     current_hac_params = load_hac(pretrained_hac_dir)
-    num_successes, success_rate, reached_subgoal_rate, rewards, steps_per_episode = evaluate_hac(current_hac_params, current_env, render_rounds=0, num_evals=100)
+    num_successes, success_rate, reached_subgoal_rate, rewards, steps_per_episode = evaluate_hac(current_hac_params, current_env, render_rounds=10, num_evals=100)
 
     print("\nSuccess rate (%d/%d): %.3f" % (num_successes, len(rewards), success_rate))
     # noinspection PyStringFormat

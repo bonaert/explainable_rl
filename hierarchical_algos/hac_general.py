@@ -17,8 +17,6 @@ from nicetypes import *
 
 import os
 
-from sacEntropyAdjustment import SacEntropyAdjustment
-
 
 def scale_state(scaler: sklearn.preprocessing.StandardScaler, state: np.ndarray) -> np.ndarray:
     """ Scales the state given the scaler """
@@ -137,8 +135,6 @@ class HacParams:
     # These fields have a default value but the user should be able
     # to override them.
     use_sac: bool = False  # By default we use DDPG, but we can switch to SAC
-    use_sac_with_entropy_adjustment: bool = False
-    alpha: float = 0.01
     all_levels_maximize_reward: bool = False  # If True, all levels maximize the reward while trying to reach the goal.
                                               # If False, they just try to reach the goal
     reward_present_in_input: bool = False   # Should the total environment reward be present in the input (could help with goal prediction)
@@ -267,38 +263,20 @@ class HacParams:
             q_bound_high = self.q_bound_high_list[level]  # None if (self.is_top_level(level) or self.all_levels_maximize_reward) else -self.max_horizons[level]
             learning_rate = 3e-4 if self.learning_rates is None else self.learning_rates[level]
             if self.use_sac:
-                if self.use_sac_with_entropy_adjustment:
-                    agent = SacEntropyAdjustment(
-                        state_size=self.state_size if self.is_top_level(level) else self.input_size,
-                        goal_size=self.subgoal_size if not self.is_top_level(level) else 0,
-                        action_low=self.subgoal_spaces_low[level] if level > 0 else self.action_low,
-                        action_high=self.subgoal_spaces_high[level] if level > 0 else self.action_high,
-                        q_bound_low=q_bound_low,
-                        q_bound_high=q_bound_high,
-                        buffer_size=self.replay_buffer_size,
-                        batch_size=self.batch_size,
-                        writer=self.get_tensorboard_writer() if (self.use_tensorboard and not self.run_on_cluster) else None,
-                        sac_id='Level %d' % level,
-                        use_priority_replay=self.use_priority_replay,
-                        learning_rate=learning_rate,
-                        initial_alpha=self.alpha
-                    )
-                else:
-                    agent = Sac(
-                        state_size=self.state_size if self.is_top_level(level) else self.input_size,
-                        goal_size=self.subgoal_size if not self.is_top_level(level) else 0,
-                        action_low=self.subgoal_spaces_low[level] if level > 0 else self.action_low,
-                        action_high=self.subgoal_spaces_high[level] if level > 0 else self.action_high,
-                        q_bound_low=q_bound_low,
-                        q_bound_high=q_bound_high,
-                        buffer_size=self.replay_buffer_size,
-                        batch_size=self.batch_size,
-                        writer=self.get_tensorboard_writer() if (self.use_tensorboard and not self.run_on_cluster) else None,
-                        sac_id='Level %d' % level,
-                        use_priority_replay=self.use_priority_replay,
-                        learning_rate=learning_rate,
-                        alpha=self.alpha
-                    )
+                agent = Sac(
+                    state_size=self.state_size if self.is_top_level(level) else self.input_size,
+                    goal_size=self.subgoal_size if not self.is_top_level(level) else 0,
+                    action_low=self.subgoal_spaces_low[level] if level > 0 else self.action_low,
+                    action_high=self.subgoal_spaces_high[level] if level > 0 else self.action_high,
+                    q_bound_low=q_bound_low,
+                    q_bound_high=q_bound_high,
+                    buffer_size=self.replay_buffer_size,
+                    batch_size=self.batch_size,
+                    writer=self.get_tensorboard_writer() if self.use_tensorboard else None,
+                    sac_id='Level %d' % level,
+                    use_priority_replay=self.use_priority_replay,
+                    learning_rate=learning_rate
+                )
             else:
                 agent = DDPG(
                     state_size=self.state_size if self.is_top_level(level) else self.input_size,
@@ -407,7 +385,6 @@ def perform_HER(her_storage: List[list], level: int, subgoals_stack: List[NumpyA
 
     # "First, one of the “next state” elements in one of the transitions will be selected
     #  as the new goal state replacing the TBD component in each transition"
-    # random_transition_index = len(transitions) - 1 # random.randrange(int(len(transitions) * 0.75), len(transitions))
     random_transition_index = random.randrange(0, len(transitions))
     random_transition = transitions[random_transition_index]  # TODO(maybe use last one only): transitions[-1]
     total_env_reward, next_input = random_transition[3], random_transition[4]
@@ -522,7 +499,7 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
         total_reward += reward
 
         if training:
-            incomplete_transitions.append((state, action, next_state, reward, total_reward, done))
+            incomplete_transitions.append((state, action, next_state, reward, total_reward))
 
         state = next_state
 
@@ -536,14 +513,11 @@ def expert_rollout(env: gym.Env, state: NumpyArray, hac_params: HacParams, train
     final_state, reduced_total_reward = next_state, reduce_reward(total_reward, percentage=0.5)
     goal = np.hstack([final_state, reduced_total_reward])
     bottom_level_transitions = []
-    for (state, action, next_state, reward, cumulated_reward, done) in incomplete_transitions:
+    for (state, action, next_state, reward, cumulated_reward) in incomplete_transitions:
         if reached_subgoal(state, cumulated_reward, goal, level=0, hac_params=hac_params):
             tr_reward, discount = 0.0, 0.0
         else:
             tr_reward, discount = -1.0, hac_params.discount
-
-        # if done:
-        #     discount = 0.0
 
         bottom_level_transitions.append(mk_transition(
             state, action, reward, cumulated_reward, next_state, tr_reward, goal, discount
