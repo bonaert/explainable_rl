@@ -51,7 +51,7 @@ def run_hiro(args):
         elif args.env_name == "LunarLanderContinuous-v2":
             env.distance_threshold = -60  # We want at least a reward of 60 (e.g. a distance of -60)
             # Can't use the observation_space bounds directly, because those go from -inf to +inf
-            # So I just arbitrariliy picked the value 100 (no idea if this is good or not)
+            # So I just arbitrarily picked the value 100 (no idea if this is good or not)
             man_scale = np.ones(2) * 5  # env.base_env.observation_space.low.shape[0]
         else:
             env.distance_threshold = -150  # We want a reward of 150 (TODO: bullshit value, fix it)
