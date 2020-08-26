@@ -5,6 +5,7 @@ import random
 import numpy as np
 import gym
 import torch
+from datetime import datetime
 
 from hac import load_hac, train, evaluate_hac, HacParams
 from common import ALWAYS, FIRST_RUN, NEVER, get_args
