@@ -29,7 +29,7 @@ if __name__ == '__main__':
     ##################################
     if args.env_name == "NotProvided":
         # env_name = "AntMaze"
-        # env_name = "MountainCar"
+        # env_name = "MountainCarContinuous-v0"
         # env_name = "Pendulum"
         env_name = "LunarLanderContinuous-v2"
     else:
@@ -41,7 +41,7 @@ if __name__ == '__main__':
         # action_noise_coeffs = np.array([0.1] * current_action_size),  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L131
         # subgoal_noise_coeffs = np.array([0.03] * current_state_size),  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L132
         raise Exception("TODO")
-    elif env_name == "MountainCar":
+    elif env_name == "MountainCarContinuous-v0":
         current_env = gym.make("MountainCarContinuous-v0")
         current_goal_state = np.array([0.48, 0.04])  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L45
 
