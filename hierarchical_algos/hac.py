@@ -470,7 +470,7 @@ def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_fr
         writer_id = writer_id + '-' + hac_params.random_id
 
     prefix = os.environ['VSC_SCRATCH'] if hac_params.run_on_cluster else '.'
-    writer = SummaryWriter(f"{prefix}/logs/{env.spec.id}/{writer_id}")
+    writer = SummaryWriter(f"{prefix}/logs/HAC/{env.spec.id}/{writer_id}")
 
     # for i in tqdm(range(hac_params.num_training_episodes)):
     for i in range(hac_params.num_training_episodes):

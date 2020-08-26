@@ -101,7 +101,7 @@ if __name__ == '__main__':
     version = 3
 
     # current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
-    save_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    save_directory = f"runs/HAC/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     random_id = None
     if args.run_on_cluster:
         random_id = str(random.randrange(1, 100000))
