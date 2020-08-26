@@ -453,10 +453,10 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray,
         for i in range(num_evals):
             state = env.reset()
             render_now = (render_frequency == ALWAYS) or (render_frequency == FIRST_RUN and i == 0)
-            _, failed, total_reward, done = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
+            final_state, failed, total_reward, done = run_hac(hac_params, state, goal_state, env, training=False, render=render_now)
 
             cumulated_reward += total_reward
-            if not failed:
+            if reached_subgoal(final_state, goal_state, level=1, hac_params=hac_params):
                 num_successes += 1
 
     success_rate = num_successes / float(num_evals)
@@ -487,14 +487,16 @@ def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_fr
             writer.add_scalar('Eval/Success Rate', success_rate, i)
             writer.add_scalar('Eval/Mean Reward', avg_reward, i)
 
-            if success_rate == 1.0:
-                print("Perfect success rate. Stopping training and saving model.")
+            if avg_reward >= env.spec.reward_threshold:
+                print("Solved the environemnt. Stopping training and saving model.")
                 save_hac(hac_params, save_directory)
                 return
 
         # Save HAC policies and params
         if (i + 1) % hac_params.save_frequency == 0:
             save_hac(hac_params, save_directory)
+
+    save_hac(hac_params, save_directory)
 
 
 def save_hac(hac_params: HacParams, directory: str = "."):

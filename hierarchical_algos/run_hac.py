@@ -49,10 +49,10 @@ if __name__ == '__main__':
         # noinspection PyUnreachableCode
         if True:
             num_levels = 2
-            max_horizons = [20, 20]  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L50
+            max_horizons = [20, 100]  # Allow 2000 steps (max supported by environment is 1000)
             # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L46
             distance_thresholds = [[0.01, 0.02],    # We want to have precise subgoals
-                                   [0.1, 10.0]]   # But for the goal I only care about the position (not the speed)
+                                   [0.05, 10.0]]   # But for the goal I only care about the position (not the speed)
         else:
             num_levels = 3
             max_horizons = [10, 10, 10]
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         current_goal_state = np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0])
 
         num_levels = 2
-        max_horizons = [10, 40]
+        max_horizons = [10, 200]  # Max episode is 1000 (allowing 2000 to be sure)
         distance_thresholds = [[0.1, 0.05, 0.05, 0.05, 0.1, 0.1, 2, 2],
                                [0.1, 0.02, 0.01, 0.01, 0.05, 0.02, 2, 2]]
         action_noise_coeffs = np.array([0.05, 0.05])
