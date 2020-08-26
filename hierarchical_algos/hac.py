@@ -1,7 +1,8 @@
 import json
+import os
 import random
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import numpy as np
 from pathlib import Path
@@ -180,6 +181,9 @@ class HacParams:
     save_frequency: int
 
     env_name: str
+
+    run_on_cluster: bool = False
+    random_id: Optional[str] = 0
 
     # Fields with default value that will be filled with a true value in the __post_init__ method
     state_size: int = -1
@@ -461,8 +465,13 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray,
 
 
 def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_frequency: int, directory: str):
-    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-    writer = SummaryWriter(f"logs/{env.spec.id}/{current_time}")
+    writer_id = datetime.now().strftime('%b%d_%H-%M-%S')
+    if hac_params.run_on_cluster:
+        writer_id = writer_id + '-' + hac_params.random_id
+
+    prefix = os.environ['VSC_SCRATCH'] if hac_params.run_on_cluster else '.'
+    writer = SummaryWriter(f"{prefix}/logs/{env.spec.id}/{writer_id}")
+
     for i in tqdm(range(hac_params.num_training_episodes)):
         # Train HAC
         state = env.reset()

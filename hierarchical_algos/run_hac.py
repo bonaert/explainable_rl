@@ -1,17 +1,40 @@
+import argparse
+import os
+import random
+
 import numpy as np
 import gym
+import torch
+
 from hac import load_hac, train, evaluate_hac, HacParams
 from common import ALWAYS, FIRST_RUN, NEVER, get_args
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env-name", type=str, default="NotProvided")
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--run-on-cluster", action="store_true")
+    args = parser.parse_args()
+
+    if args.seed != 0:
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        random.seed(args.seed)
+        os.environ['PYTHONHASHSEED'] = str(args.seed)
+
     # noinspection PyUnreachableCode
     ##################################
     #     Environment parameters     #
     ##################################
-    # env_name = "AntMaze"
-    # env_name = "MountainCar"
-    # env_name = "Pendulum"
-    env_name = "LunarLanderContinuous-v2"
+    if args.env_name == "NotProvided":
+        # env_name = "AntMaze"
+        # env_name = "MountainCar"
+        # env_name = "Pendulum"
+        env_name = "LunarLanderContinuous-v2"
+    else:
+        env_name = args.env_name
+
     if env_name == "AntMaze":
         # distance_thresholds = [0.1, 0.1]  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L106
         # max_horizons = 10  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L27
@@ -75,12 +98,24 @@ if __name__ == '__main__':
     ########################################
     args = get_args()
     version = 3
+
     # current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     current_directory = f"logs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    random_id = None
+    if args.run_on_cluster:
+        random_id = str(random.randrange(1, 100000))
+        dir_identifier = datetime.now().strftime('%b%d_%H-%M-%S') + '-' + random_id
+        current_directory = os.environ['VSC_SCRATCH'] + '/' + current_directory + '/' + dir_identifier
+
     print(f"Current directory: {current_directory}")
     currently_training = True
-    render_frequency = NEVER # NEVER if args.no_render else FIRST_RUN
-    num_training_episodes = 10000
+    render_frequency = NEVER  # NEVER if args.no_render else FIRST_RUN
+
+    if env_name == "LunarLanderContinuous-v2":
+        num_training_episodes = 10000
+    else:
+        num_training_episodes = 2000
+
     evaluation_frequency = 30
 
     #############################
@@ -90,8 +125,7 @@ if __name__ == '__main__':
     # batch_size=1024  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L43
     batch_size = 128  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L56
 
-    # discount=0.98  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/master/critic.py#L8
-    discount = 0.98
+    discount = 0.98  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/master/critic.py#L8
 
     # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/master/train.py#L54
     # Note: this parameters is actually more complicated than this, because the buffer size depends on the level
@@ -119,7 +153,9 @@ if __name__ == '__main__':
         num_update_steps_when_training=num_update_steps_when_training,
         evaluation_frequency=evaluation_frequency,
         save_frequency=evaluation_frequency,
-        env_name=current_env.spec.id
+        env_name=current_env.spec.id,
+        random_id=str(random_id),
+        run_on_cluster=args.run_on_cluster
     )
 
     print("Action space: Low %s\tHigh %s" % (current_env.action_space.low, current_env.action_space.high))
