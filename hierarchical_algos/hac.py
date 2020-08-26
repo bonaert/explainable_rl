@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
+# from tqdm import tqdm
 
 from common import get_tensor, ReplayBuffer, get_range_and_center, json_default, NEVER, FIRST_RUN, ALWAYS
 
@@ -472,7 +472,8 @@ def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_fr
     prefix = os.environ['VSC_SCRATCH'] if hac_params.run_on_cluster else '.'
     writer = SummaryWriter(f"{prefix}/logs/{env.spec.id}/{writer_id}")
 
-    for i in tqdm(range(hac_params.num_training_episodes)):
+    # for i in tqdm(range(hac_params.num_training_episodes)):
+    for i in range(hac_params.num_training_episodes):
         # Train HAC
         state = env.reset()
         run_hac(hac_params, state, goal_state, env, training=True, render=False)
