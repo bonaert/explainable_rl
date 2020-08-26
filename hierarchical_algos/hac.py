@@ -464,7 +464,7 @@ def evaluate_hac(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray,
     return num_successes, success_rate, average_reward
 
 
-def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_frequency: int, directory: str):
+def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_frequency: int, save_directory: str):
     writer_id = datetime.now().strftime('%b%d_%H-%M-%S')
     if hac_params.run_on_cluster:
         writer_id = writer_id + '-' + hac_params.random_id
@@ -489,12 +489,12 @@ def train(hac_params: HacParams, env: gym.Env, goal_state: np.ndarray, render_fr
 
             if success_rate == 1.0:
                 print("Perfect success rate. Stopping training and saving model.")
-                save_hac(hac_params, directory)
+                save_hac(hac_params, save_directory)
                 return
 
         # Save HAC policies and params
         if (i + 1) % hac_params.save_frequency == 0:
-            save_hac(hac_params, directory)
+            save_hac(hac_params, save_directory)
 
 
 def save_hac(hac_params: HacParams, directory: str = "."):

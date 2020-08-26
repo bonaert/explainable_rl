@@ -101,14 +101,14 @@ if __name__ == '__main__':
     version = 3
 
     # current_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
-    current_directory = f"logs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
+    save_directory = f"runs/{env_name}_{num_levels}_levels_h_{'_'.join(map(str, max_horizons))}_v{version}"
     random_id = None
     if args.run_on_cluster:
         random_id = str(random.randrange(1, 100000))
         dir_identifier = datetime.now().strftime('%b%d_%H-%M-%S') + '-' + random_id
-        current_directory = os.environ['VSC_SCRATCH'] + '/' + current_directory + '/' + dir_identifier
+        save_directory = os.environ['VSC_SCRATCH'] + '/' + save_directory + '/' + dir_identifier
 
-    print(f"Current directory: {current_directory}")
+    print(f"Current directory: {save_directory}")
     currently_training = True
     render_frequency = NEVER  # NEVER if args.no_render else FIRST_RUN
 
@@ -163,8 +163,8 @@ if __name__ == '__main__':
     print("State space: Low %s\tHigh %s" % (current_env.observation_space.low, current_env.observation_space.high))
 
     if currently_training:
-        train(current_hac_params, current_env, current_goal_state, render_frequency, directory=current_directory)
+        train(current_hac_params, current_env, current_goal_state, render_frequency, save_directory=save_directory)
     else:
-        current_hac_params = load_hac(current_directory)
+        current_hac_params = load_hac(save_directory)
         evaluate_hac(current_hac_params, current_env, current_goal_state, render_frequency=ALWAYS, num_evals=100)
 
