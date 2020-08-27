@@ -142,7 +142,7 @@ class Sac(nn.Module):
     def __init__(self, state_size: int, goal_size: int, action_low: np.ndarray, action_high: np.ndarray,
                  q_bound_low: float, q_bound_high: float,
                  buffer_size: int, batch_size: int, writer, sac_id: Optional[str],
-                 use_priority_replay: bool, learning_rate: float):
+                 use_priority_replay: bool, learning_rate: float, num_transition_dims=8):
         super().__init__()
         self.action_size = len(action_low)
         self.use_priority_replay = use_priority_replay
@@ -172,9 +172,9 @@ class Sac(nn.Module):
         # self.buffer = PrioritizedReplayBuffer(buffer_size, num_transition_dims=8)
 
         if use_priority_replay:
-            self.buffer = PrioritizedReplayBuffer(buffer_size, num_transition_dims=8)
+            self.buffer = PrioritizedReplayBuffer(buffer_size, num_transition_dims=num_transition_dims)
         else:
-            self.buffer = ReplayBuffer(buffer_size, num_transition_dims=8)
+            self.buffer = ReplayBuffer(buffer_size, num_transition_dims=num_transition_dims)
 
         self.batch_size = batch_size
         self.q_bound_low = q_bound_low
@@ -184,6 +184,8 @@ class Sac(nn.Module):
         self.use_tensorboard = (writer is not None)
         self.writer = writer
         self.sac_id = sac_id
+
+        self.num_transition_dims = num_transition_dims
 
     def get_error(self, transition: tuple) -> float:
         state, action, _, _, next_state, reward, goal, discount = [permissive_get_tensor(x) for x in transition]
@@ -219,7 +221,12 @@ class Sac(nn.Module):
 
         for i in range(num_updates):
             # Step 1: get the transitions and the next actions for the next state
-            states, actions, env_rewards, total_env_rewards, next_states, rewards, goals, discounts = self.buffer.get_batch(self.batch_size)
+            if self.num_transition_dims == 8:  # HAC-General
+                states, actions, env_rewards, total_env_rewards, next_states, rewards, goals, discounts = self.buffer.get_batch(self.batch_size)
+            elif self.num_transition_dims == 6:  # HAC
+                states, actions, rewards, next_states, goals, discounts = self.buffer.get_batch(self.batch_size)
+            else:
+                raise Exception("Bad num transition dims")
 
             # Step 2: improve the critic
             target_q_values, values1, values2 = self.get_target_q_values(rewards, discounts, next_states, goals)

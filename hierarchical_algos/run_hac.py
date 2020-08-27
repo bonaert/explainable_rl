@@ -14,7 +14,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-name", type=str, default="NotProvided")
-    parser.add_argument("--seed", type=int)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--run-on-cluster", action="store_true")
     args = parser.parse_args()
 
@@ -84,8 +84,10 @@ if __name__ == '__main__':
 
         num_levels = 2
         max_horizons = [10, 200]  # Max episode is 1000 (allowing 2000 to be sure)
-        distance_thresholds = [[0.1, 0.05, 0.05, 0.05, 0.1, 0.1, 2, 2],
-                               [0.1, 0.02, 0.01, 0.01, 0.05, 0.02, 2, 2]]
+        # distance_thresholds = [[0.1, 0.05, 0.05, 0.05, 0.1, 0.1, 2, 2],
+        #                        [0.1, 0.02, 0.01, 0.01, 0.05, 0.02, 2, 2]]
+        distance_thresholds = [[0.2, 0.1,  0.2,  0.1,  0.3,  0.5, 2.0, 2.0],
+                               [0.1, 0.02, 0.02, 0.05, 0.05, 0.05, 2.0, 2.0]]
         action_noise_coeffs = np.array([0.05, 0.05])
         subgoal_noise_coeffs = np.array([0.02, 0.02, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05])
     else:
@@ -132,7 +134,7 @@ if __name__ == '__main__':
     # Note: this parameters is actually more complicated than this, because the buffer size depends on the level
     # but currently, we're simplying it to a simple constant. TODO: see if this needs fixing
     # replay_buffer_size=10**7,  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/layer.py#L25
-    replay_buffer_size = 500_000  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/117d4002e754a53019b5cf7f103946d382488217/utils.py#L4
+    replay_buffer_size = 2_000_000  # https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/blob/117d4002e754a53019b5cf7f103946d382488217/utils.py#L4
     subgoal_testing_frequency = 0.3  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/design_agent_and_env.py#L125
     num_update_steps_when_training = 40  # https://github.com/andrew-j-levy/Hierarchical-Actor-Critc-HAC-/blob/f90f2c356ab0a95a57003c4d70a0108f09b6e6b9/agent.py#L40
 

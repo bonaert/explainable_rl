@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
+from sac import Sac
 # from tqdm import tqdm
 
 from common import get_tensor, ReplayBuffer, get_range_and_center, json_default, NEVER, FIRST_RUN, ALWAYS
@@ -196,7 +197,7 @@ class HacParams:
     state_center: np.ndarray = field(default_factory=lambda: None)
 
     her_storage: List[List[list]] = field(default_factory=list)
-    policies: List[DDPG] = field(default_factory=list)
+    policies: List[Sac] = field(default_factory=list)
 
     def __post_init__(self):
         if self.env_name.startswith("LunarLander"):
@@ -239,16 +240,32 @@ class HacParams:
         self.her_storage = [[] for _ in range(self.num_levels)]
         self.policies = []
         for level in range(self.num_levels):
-            ddpg = DDPG(
+            agent = Sac(
                 state_size=self.state_size,
                 goal_size=self.state_size,
-                action_range=self.state_range if level > 0 else self.action_range,
-                action_center=self.state_center if level > 0 else self.action_center,
-                q_bound=-self.max_horizons[level],
+                action_low=self.state_low if level > 0 else self.action_low,
+                action_high=self.state_high if level > 0 else self.action_high,
+                q_bound_low=-self.max_horizons[level],
+                q_bound_high=0,
                 buffer_size=self.replay_buffer_size,
-                batch_size=self.batch_size
+                batch_size=self.batch_size,
+                writer=None,
+                sac_id='Level %d' % level,
+                use_priority_replay=False,
+                learning_rate=3.0e-4,
+                num_transition_dims=6
             )
-            self.policies.append(ddpg)
+
+            # agent = DDPG(
+            #     state_size=self.state_size,
+            #     goal_size=self.state_size,
+            #     action_range=self.state_range if level > 0 else self.action_range,
+            #     action_center=self.state_center if level > 0 else self.action_center,
+            #     q_bound=-self.max_horizons[level],
+            #     buffer_size=self.replay_buffer_size,
+            #     batch_size=self.batch_size
+            # )
+            self.policies.append(agent)
 
 
 def reached_subgoal(state: np.ndarray, goal: np.ndarray, level: int, hac_params: HacParams) -> bool:
